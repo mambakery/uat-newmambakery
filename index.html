@@ -1318,12 +1318,10 @@ function renderAdminDashboard() {
 
   // ออเดอร์วันนี้ = สร้างวันนี้
   const todayOrders = DB.orders.filter(o => {
-    // ✅ FIX: replace space with T เพื่อให้ new Date() parse ได้ถูกต้องทุก browser
-    const rawDate = (o.createdAt || '').replace(' ', 'T');
-    const d = new Date(rawDate);
-    if (isNaN(d)) return false;
-    const dStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-    return dStr === todayStr;
+    // ✅ FIX: ตัดแค่ 10 ตัวแรก (YYYY-MM-DD) จาก createdAt แล้วเปรียบเทียบตรงๆ
+    // ไม่ใช้ new Date() เพราะมีปัญหา UTC offset ทำให้วันเลื่อน
+    const dateStr = (o.createdAt || '').substring(0, 10);
+    return dateStr === todayStr;
   });
   const todayRevenue = todayOrders.reduce((s, o) => s + (o.total || 0), 0);
 
