@@ -1571,7 +1571,7 @@ function viewOrder(id) {
     </div>
     <div class="form-group">
       <div class="form-label">เปลี่ยนสถานะ</div>
-      <select class="form-control" id="newOrderStatus">
+      <select class="form-control" id="newOrderStatus" onchange="onStatusChange()">
         <option value="pending" ${order.status==='pending'?'selected':''}>รอตรวจสอบ</option>
         <option value="paid" ${order.status==='paid'?'selected':''}>ชำระแล้ว</option>
         <option value="production" ${order.status==='production'?'selected':''}>กำลังผลิต</option>
@@ -1579,19 +1579,107 @@ function viewOrder(id) {
         <option value="delivered" ${order.status==='delivered'?'selected':''}>ส่งแล้ว</option>
       </select>
     </div>
+    <!-- ✅ ส่วนลด แสดงเมื่อเลือก พร้อมส่ง -->
+    <div id="discountSection" style="display:${order.status==='ready'?'block':'none'};background:var(--primary-light);border-radius:var(--radius-sm);padding:1rem;margin-bottom:1rem;">
+      <div style="font-weight:700;color:var(--primary-dark);margin-bottom:10px;">🏷️ ให้ส่วนลด (ถ้ามี)</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+        <select class="form-control" id="discountType" style="width:140px;flex-shrink:0;" onchange="calcDiscount(${order.total})">
+          <option value="baht">฿ บาท</option>
+          <option value="percent">% เปอร์เซ็นต์</option>
+        </select>
+        <input class="form-control" id="discountValue" type="number" min="0" max="${order.total}" placeholder="0" oninput="calcDiscount(${order.total})" style="flex:1;">
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.9rem;color:var(--text-muted);">
+        <span>ยอดเดิม</span><span>฿${order.total.toLocaleString()}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.9rem;color:var(--danger);">
+        <span>ส่วนลด</span><span id="discountAmount">฿0</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1.15rem;font-weight:700;border-top:2px dashed #ccc;margin-top:6px;">
+        <span>ยอดสุทธิ</span><span id="finalTotal" style="color:var(--primary);">฿${order.total.toLocaleString()}</span>
+      </div>
+    </div>
   `;
   openModal('orderModal');
+}
+
+// ✅ แสดง/ซ่อน discount section เมื่อเปลี่ยนสถานะ
+function onStatusChange() {
+  const status = document.getElementById('newOrderStatus').value;
+  const sec = document.getElementById('discountSection');
+  if (sec) sec.style.display = status === 'ready' ? 'block' : 'none';
+  // reset discount เมื่อเปลี่ยนสถานะอื่น
+  if (status !== 'ready') {
+    const dv = document.getElementById('discountValue');
+    if (dv) dv.value = '';
+    const da = document.getElementById('discountAmount');
+    if (da) da.textContent = '฿0';
+  }
+}
+
+// ✅ คำนวณยอดหลังส่วนลด real-time
+function calcDiscount(originalTotal) {
+  const type = document.getElementById('discountType').value;
+  const val = parseFloat(document.getElementById('discountValue').value) || 0;
+  let discountAmt = 0;
+  if (type === 'baht') {
+    discountAmt = Math.min(val, originalTotal);
+  } else {
+    discountAmt = Math.min((val / 100) * originalTotal, originalTotal);
+  }
+  const finalAmt = originalTotal - discountAmt;
+  document.getElementById('discountAmount').textContent = '- ฿' + discountAmt.toLocaleString(undefined, {maximumFractionDigits:2});
+  document.getElementById('finalTotal').textContent = '฿' + finalAmt.toLocaleString(undefined, {maximumFractionDigits:2});
 }
 
 function updateOrderStatus() {
   const status = document.getElementById('newOrderStatus').value;
   const order = DB.orders.find(o => o.id === currentOrderId);
-  if (order) {
-    order.status = status;
-    closeModal('orderModal');
-    renderOrders();
-    showToast(`อัพเดทสถานะ ${currentOrderId} สำเร็จ`, 'success');
+  if (!order) return;
+
+  // ✅ คำนวณยอดหลังส่วนลด ถ้าเปลี่ยนเป็น "พร้อมส่ง"
+  let newTotal = order.total;
+  let discountAmt = 0;
+  if (status === 'ready') {
+    const type = document.getElementById('discountType')?.value || 'baht';
+    const val = parseFloat(document.getElementById('discountValue')?.value) || 0;
+    if (type === 'baht') {
+      discountAmt = Math.min(val, order.total);
+    } else {
+      discountAmt = Math.min((val / 100) * order.total, order.total);
+    }
+    newTotal = order.total - discountAmt;
   }
+
+  order.status = status;
+  if (discountAmt > 0) order.total = newTotal;
+
+  closeModal('orderModal');
+  renderOrders();
+
+  // บันทึกลง GAS
+  const params = new URLSearchParams({
+    action: 'updateOrder',
+    token: currentUser?.token || '',
+    orderId: currentOrderId,
+    status,
+  });
+  // ✅ ถ้ามีส่วนลด ส่ง total ใหม่ไปอัปเดต Sheets ด้วย
+  if (discountAmt > 0) params.append('newTotal', newTotal);
+
+  fetch(`${GAS_URL}?${params}`)
+    .then(r => r.json())
+    .then(res => {
+      if (res.success) {
+        const msg = discountAmt > 0
+          ? `✅ พร้อมส่ง | ส่วนลด ฿${discountAmt.toLocaleString()} | ยอดสุทธิ ฿${newTotal.toLocaleString()}`
+          : `✅ อัพเดทสถานะ ${currentOrderId} สำเร็จ`;
+        showToast(msg, 'success');
+      } else {
+        showToast(`❌ ${res.error}`, 'error');
+      }
+    })
+    .catch(() => showToast('❌ ไม่สามารถเชื่อมต่อได้', 'error'));
 }
 
 // PRODUCTS
