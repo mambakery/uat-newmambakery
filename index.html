@@ -1596,13 +1596,17 @@ function viewOrder(id) {
         </select>
         <input class="form-control" id="discountValue" type="number" min="0" max="${order.total}" placeholder="0" oninput="calcDiscount(${order.total})" style="flex:1;">
       </div>
-      <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.9rem;color:var(--text-muted);">
-        <span>ยอดเดิม</span><span>฿${order.total.toLocaleString()}</span>
+      <!-- ✅ แสดงเฉพาะเมื่อมีส่วนลด > 0 -->
+      <div id="discountBreakdown" style="display:none;">
+        <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.9rem;color:var(--text-muted);">
+          <span>ยอดเดิม</span><span id="originalTotal">฿${order.total.toLocaleString()}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.9rem;color:var(--danger);font-weight:600;">
+          <span>ส่วนลด</span><span id="discountAmount">- ฿0</span>
+        </div>
+        <div style="border-top:2px dashed #ccc;margin:6px 0;"></div>
       </div>
-      <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.9rem;color:var(--danger);">
-        <span>ส่วนลด</span><span id="discountAmount">฿0</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1.15rem;font-weight:700;border-top:2px dashed #ccc;margin-top:6px;">
+      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:1.15rem;font-weight:700;">
         <span>ยอดสุทธิ</span><span id="finalTotal" style="color:var(--primary);">฿${order.total.toLocaleString()}</span>
       </div>
     </div>
@@ -1635,8 +1639,13 @@ function calcDiscount(originalTotal) {
     discountAmt = Math.min((val / 100) * originalTotal, originalTotal);
   }
   const finalAmt = originalTotal - discountAmt;
-  document.getElementById('discountAmount').textContent = '- ฿' + discountAmt.toLocaleString(undefined, {maximumFractionDigits:2});
-  document.getElementById('finalTotal').textContent = '฿' + finalAmt.toLocaleString(undefined, {maximumFractionDigits:2});
+  // ✅ แสดง breakdown (ยอดเดิม + ส่วนลด) เฉพาะเมื่อมีส่วนลด > 0
+  const breakdown = document.getElementById('discountBreakdown');
+  if (breakdown) breakdown.style.display = discountAmt > 0 ? 'block' : 'none';
+  const daEl = document.getElementById('discountAmount');
+  if (daEl) daEl.textContent = '- ฿' + discountAmt.toLocaleString(undefined, {maximumFractionDigits:2});
+  const ftEl = document.getElementById('finalTotal');
+  if (ftEl) ftEl.textContent = '฿' + finalAmt.toLocaleString(undefined, {maximumFractionDigits:2});
 }
 
 function updateOrderStatus() {
