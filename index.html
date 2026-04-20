@@ -760,6 +760,8 @@
     <div class="modal-body" id="orderModalBody"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('orderModal')">ปิด</button>
+      <!-- ✅ ปุ่มพิมพ์บิลสำหรับ admin -->
+      <button class="btn btn-secondary" id="adminPrintBillBtn" onclick="adminPrintBill()">🖨️ พิมพ์บิล</button>
       <button class="btn btn-primary" id="orderStatusBtn" onclick="updateOrderStatus()">อัพเดทสถานะ</button>
     </div>
   </div>
@@ -1320,10 +1322,8 @@ function renderAdminDashboard() {
   const todayCompact = todayStr.replace(/-/g, ''); // '20260420'
   const todayOrders = DB.orders.filter(o => {
     // ✅ FIX FINAL: ดึงวันที่จาก Order ID (ORD-20260420-XXXXX) — ไม่มีปัญหา timezone เลย
-    // เพราะ GAS generate Order ID จาก Bangkok date เสมอ
     const idDatePart = (o.id || '').split('-')[1] || '';
     if (idDatePart.length === 8 && idDatePart === todayCompact) return true;
-    // fallback: ใช้ createdAt กรณี id format ไม่ตรง
     const dateStr = (o.createdAt || '').substring(0, 10);
     return dateStr === todayStr;
   });
@@ -2552,21 +2552,29 @@ document.addEventListener('DOMContentLoaded', () => {
 // =========================================
 // ข้อ 2: PRINT BILL
 // =========================================
+// ✅ admin กดพิมพ์บิลจาก order modal
+function adminPrintBill() {
+  if (currentOrderId) printBill(currentOrderId);
+}
+
 function printBill(orderId) {
   const order = DB.orders.find(o => o.id === orderId);
   if (!order) return;
-  const deliveryFee = 0; // ส่งฟรี
+  const deliveryFee = 0;
+  // รองรับทั้ง admin (ไม่มี riderPayMethod element) และ rider
   const payEl = document.getElementById('riderPayMethod_' + orderId);
   const payMethod = payEl ? payEl.value : (order.payMethod || 'cash');
   const payLabel = payMethod === 'cash' ? '💵 เงินสด' : '🏦 โอนเงิน';
   const now = new Date().toLocaleString('th-TH');
   const itemsHtml = order.items.filter(i => i.qty > 0)
     .map(i => `<div class="bill-row"><span>${i.name} ×${i.qty}</span><span>฿${(i.price*i.qty).toLocaleString()}</span></div>`).join('');
-  // ดึง URL ของ logo จาก shopLogo img ถ้ามี
-  const logoSrc = document.getElementById('shopLogo')?.src || '';
+  // ✅ ใช้ getAttribute แทน .src ป้องกัน browser แปลงเป็น absolute URL
+  const logoSrc = document.getElementById('shopLogo')?.getAttribute('src') || '';
   const logoHtml = logoSrc
     ? `<img src="${logoSrc}" class="bill-logo" alt="logo">`
     : `<div style="font-size:3rem;margin-bottom:6px;">🥐</div>`;
+  // ✅ แสดงวิธีรับสินค้า รองรับทั้ง "ส่งบ้าน" และ "รับเอง"
+  const deliveryMethodLabel = order.deliveryMethod === 'delivery' ? '🚚 ส่งบ้าน' : '🏪 รับเอง';
   document.getElementById('printBillArea').innerHTML = `
     <div class="bill-header">
       ${logoHtml}
@@ -2577,7 +2585,9 @@ function printBill(orderId) {
     <div class="bill-row"><span>เลขที่บิล</span><span>${order.id}</span></div>
     <div class="bill-row"><span>ลูกค้า</span><span>${order.customer}</span></div>
     <div class="bill-row"><span>โทร</span><span>${order.phone}</span></div>
+    <div class="bill-row"><span>วิธีรับ</span><span>${deliveryMethodLabel}</span></div>
     ${order.address ? `<div class="bill-row"><span>ที่อยู่</span><span style="max-width:55%;text-align:right;">${order.address}</span></div>` : ''}
+    ${order.deliveryDate ? `<div class="bill-row"><span>วันนัดส่ง</span><span>${order.deliveryDate.split('T')[0]}</span></div>` : ''}
     <hr style="border:none;border-top:1px dashed #aaa;margin:8px 0;">
     ${itemsHtml}
     ${deliveryFee > 0 ? `<div class="bill-row text-muted"><span>ค่าจัดส่ง</span><span>฿50</span></div>` : ''}
