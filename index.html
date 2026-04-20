@@ -1317,9 +1317,13 @@ function renderAdminDashboard() {
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
   // ออเดอร์วันนี้ = สร้างวันนี้
+  const todayCompact = todayStr.replace(/-/g, ''); // '20260420'
   const todayOrders = DB.orders.filter(o => {
-    // ✅ FIX: ตัดแค่ 10 ตัวแรก (YYYY-MM-DD) จาก createdAt แล้วเปรียบเทียบตรงๆ
-    // ไม่ใช้ new Date() เพราะมีปัญหา UTC offset ทำให้วันเลื่อน
+    // ✅ FIX FINAL: ดึงวันที่จาก Order ID (ORD-20260420-XXXXX) — ไม่มีปัญหา timezone เลย
+    // เพราะ GAS generate Order ID จาก Bangkok date เสมอ
+    const idDatePart = (o.id || '').split('-')[1] || '';
+    if (idDatePart.length === 8 && idDatePart === todayCompact) return true;
+    // fallback: ใช้ createdAt กรณี id format ไม่ตรง
     const dateStr = (o.createdAt || '').substring(0, 10);
     return dateStr === todayStr;
   });
