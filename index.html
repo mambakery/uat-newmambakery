@@ -1251,6 +1251,8 @@ function adminTab(tab, el) {
   document.getElementById('admin-' + tab).classList.remove('hidden');
   document.querySelectorAll('.sidebar-nav a').forEach(a => a.classList.remove('active'));
   if (el) el.classList.add('active');
+  // ✅ FIX: โหลดข้อมูลใหม่ทุกครั้งที่กด Dashboard เพื่อให้ตัวเลขอัปเดต
+  if (tab === 'dashboard') loadOrders();
   if (tab === 'orders') loadOrders();
   if (tab === 'products') renderProducts_admin();
   if (tab === 'production') renderProduction();
@@ -1316,7 +1318,10 @@ function renderAdminDashboard() {
 
   // ออเดอร์วันนี้ = สร้างวันนี้
   const todayOrders = DB.orders.filter(o => {
-    const d = new Date(o.createdAt);
+    // ✅ FIX: replace space with T เพื่อให้ new Date() parse ได้ถูกต้องทุก browser
+    const rawDate = (o.createdAt || '').replace(' ', 'T');
+    const d = new Date(rawDate);
+    if (isNaN(d)) return false;
     const dStr = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     return dStr === todayStr;
   });
