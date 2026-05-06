@@ -2584,18 +2584,37 @@ document.addEventListener('DOMContentLoaded', () => {
 function printBill(orderId) {
   const order = DB.orders.find(o => o.id === orderId);
   if (!order) return;
-  const deliveryFee = 0; // ส่งฟรี
   const payEl = document.getElementById('riderPayMethod_' + orderId);
   const payMethod = payEl ? payEl.value : (order.payMethod || 'cash');
   const payLabel = payMethod === 'cash' ? '💵 เงินสด' : '🏦 โอนเงิน';
   const now = new Date().toLocaleString('th-TH');
+
+  // ✅ คำนวณ subtotal จากราคาสินค้าจริง (ก่อนหักส่วนลด)
+  const subtotal = order.items.filter(i => i.qty > 0).reduce((s, i) => s + i.qty * i.price, 0);
+  const discount = subtotal - order.total; // ส่วนลดที่มีอยู่
+
   const itemsHtml = order.items.filter(i => i.qty > 0)
     .map(i => `<div class="bill-row"><span>${i.name} ×${i.qty}</span><span>฿${(i.price*i.qty).toLocaleString()}</span></div>`).join('');
-  // ดึง URL ของ logo จาก shopLogo img ถ้ามี
-  const logoSrc = document.getElementById('shopLogo')?.src || '';
+
+  // ✅ summary: จัดส่งฟรี / รวม / ส่วนลด / ยอดสุทธิ
+  const summaryHtml = `
+    ${order.deliveryMethod === 'delivery' ? `<div class="bill-row" style="color:#777;"><span>จัดส่งฟรี</span><span>฿0</span></div>` : ''}
+    <div class="bill-row" style="font-weight:600;border-top:1px dashed #aaa;padding-top:6px;margin-top:4px;">
+      <span>รวม</span><span>฿${subtotal.toLocaleString()}</span>
+    </div>
+    ${discount > 0 ? `<div class="bill-row" style="color:#C0392B;font-weight:600;">
+      <span>ส่วนลด</span><span>- ฿${discount.toLocaleString()}</span>
+    </div>` : ''}
+    <div class="bill-total"><span>ยอดสุทธิ</span><span>฿${order.total.toLocaleString()}</span></div>
+  `;
+
+  // ✅ ใช้ getAttribute แทน .src ป้องกัน browser แปลงเป็น absolute URL
+  const logoSrc = document.getElementById('shopLogo')?.getAttribute('src') || '';
   const logoHtml = logoSrc
     ? `<img src="${logoSrc}" class="bill-logo" alt="logo">`
     : `<div style="font-size:3rem;margin-bottom:6px;">🥐</div>`;
+  const deliveryMethodLabel = order.deliveryMethod === 'delivery' ? '🚚 ส่งบ้าน' : '🏪 รับเอง';
+
   document.getElementById('printBillArea').innerHTML = `
     <div class="bill-header">
       ${logoHtml}
@@ -2606,12 +2625,13 @@ function printBill(orderId) {
     <div class="bill-row"><span>เลขที่บิล</span><span>${order.id}</span></div>
     <div class="bill-row"><span>ลูกค้า</span><span>${order.customer}</span></div>
     <div class="bill-row"><span>โทร</span><span>${order.phone}</span></div>
+    <div class="bill-row"><span>วิธีรับ</span><span>${deliveryMethodLabel}</span></div>
     ${order.address ? `<div class="bill-row"><span>ที่อยู่</span><span style="max-width:55%;text-align:right;">${order.address}</span></div>` : ''}
+    ${order.deliveryDate ? `<div class="bill-row"><span>วันนัดส่ง</span><span>${order.deliveryDate.split('T')[0]}</span></div>` : ''}
     <hr style="border:none;border-top:1px dashed #aaa;margin:8px 0;">
     ${itemsHtml}
-    ${deliveryFee > 0 ? `<div class="bill-row text-muted"><span>ค่าจัดส่ง</span><span>฿50</span></div>` : ''}
-    <div class="bill-total"><span>ยอดรวม</span><span>฿${order.total.toLocaleString()}</span></div>
-    <div class="bill-row"><span>ชำระโดย</span><span>${payLabel}</span></div>
+    ${summaryHtml}
+    <div class="bill-row" style="margin-top:4px;"><span>ชำระโดย</span><span>${payLabel}</span></div>
     <div class="bill-footer">ขอบคุณที่ใช้บริการ 🙏<br>แหม่มเบเกอรี่</div>
   `;
   document.getElementById('printBillArea').style.display = 'block';
