@@ -760,6 +760,7 @@
     <div class="modal-body" id="orderModalBody"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('orderModal')">ปิด</button>
+      <button class="btn btn-secondary" onclick="adminPrintBill()" style="display:flex;align-items:center;gap:6px;">🖨️ พิมพ์บิล</button>
       <button class="btn btn-primary" id="orderStatusBtn" onclick="updateOrderStatus()">อัพเดทสถานะ</button>
     </div>
   </div>
@@ -2337,10 +2338,7 @@ function confirmDelivery(id) {
     .catch(() => showToast('❌ ไม่สามารถเชื่อมต่อได้', 'error'));
 }
 
-function printBillFromModal(id) {
-  closeModal('deliveryModal');
-  setTimeout(() => printBill(id), 100);
-}
+// printBillFromModal defined in PRINT BILL section
 
 function adjustRiderItem(idx, delta, orderId) {
   const order = DB.orders.find(o => o.id === orderId);
@@ -2549,6 +2547,18 @@ function showToast(msg, type = 'success') {
   toast.innerHTML = (type === 'success' ? '✓ ' : '✗ ') + msg;
   container.appendChild(toast);
   setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 3000);
+}
+
+// =========================================
+// PRINT BILL
+// =========================================
+// ✅ admin กดพิมพ์บิลจาก orderModal
+function adminPrintBill() {
+  if (currentOrderId) printBill(currentOrderId);
+}
+
+function printBillFromModal(orderId) {
+  printBill(orderId);
 }
 
 // =========================================
