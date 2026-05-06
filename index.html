@@ -229,6 +229,15 @@
   .bill-row { display:flex; justify-content:space-between; padding:3px 0; font-size:13px; }
   .bill-total { display:flex; justify-content:space-between; padding:8px 0; font-size:16px; font-weight:700; border-top:2px dashed #333; margin-top:6px; }
   .bill-footer { text-align:center; margin-top:12px; font-size:11px; color:#777; border-top:1px dashed #aaa; padding-top:8px; }
+  /* ✅ bill table */
+  .bill-table { width:100%; border-collapse:collapse; font-size:13px; margin:4px 0; }
+  .bill-table th { font-weight:700; color:var(--primary,#D4854A); border-bottom:1px solid #ccc; padding:4px 4px; font-size:12px; }
+  .bill-table td { padding:3px 4px; vertical-align:top; }
+  .bill-table .col-name { width:45%; }
+  .bill-table .col-qty { width:15%; text-align:center; }
+  .bill-table .col-price { width:20%; text-align:right; }
+  .bill-table .col-total { width:20%; text-align:right; font-weight:600; }
+  .bill-table tr:last-child td { border-bottom:1px dashed #aaa; padding-bottom:6px; }
 
   /* OWNER CHART COLORS */
   .chart-bar { transition: opacity 0.2s; }
@@ -2593,13 +2602,38 @@ function printBill(orderId) {
   const subtotal = order.items.filter(i => i.qty > 0).reduce((s, i) => s + i.qty * i.price, 0);
   const discount = subtotal - order.total; // ส่วนลดที่มีอยู่
 
-  const itemsHtml = order.items.filter(i => i.qty > 0)
-    .map(i => `<div class="bill-row"><span>${i.name} ×${i.qty}</span><span>฿${(i.price*i.qty).toLocaleString()}</span></div>`).join('');
+  // ✅ แสดงในรูปแบบตาราง รายการ / จำนวน / หน่วยละ / จำนวนเงิน
+  const itemsHtml = `
+    <table class="bill-table">
+      <thead>
+        <tr>
+          <th class="col-name">รายการ</th>
+          <th class="col-qty">จำนวน</th>
+          <th class="col-price">หน่วยละ</th>
+          <th class="col-total">จำนวนเงิน</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${order.items.filter(i => i.qty > 0).map(i => `
+          <tr>
+            <td class="col-name">${i.name}</td>
+            <td class="col-qty">${i.qty}</td>
+            <td class="col-price">฿${i.price.toLocaleString()}</td>
+            <td class="col-total">฿${(i.price * i.qty).toLocaleString()}</td>
+          </tr>`).join('')}
+        ${order.deliveryMethod === 'delivery' ? `
+          <tr>
+            <td class="col-name" style="color:#777;">จัดส่งฟรี</td>
+            <td></td><td></td>
+            <td class="col-total" style="color:#777;">฿0</td>
+          </tr>` : ''}
+      </tbody>
+    </table>
+  `;
 
-  // ✅ summary: จัดส่งฟรี / รวม / ส่วนลด / ยอดสุทธิ
+  // ✅ summary: รวม / ส่วนลด / ยอดสุทธิ
   const summaryHtml = `
-    ${order.deliveryMethod === 'delivery' ? `<div class="bill-row" style="color:#777;"><span>จัดส่งฟรี</span><span>฿0</span></div>` : ''}
-    <div class="bill-row" style="font-weight:600;border-top:1px dashed #aaa;padding-top:6px;margin-top:4px;">
+    <div class="bill-row" style="font-weight:600;padding-top:4px;margin-top:2px;">
       <span>รวม</span><span>฿${subtotal.toLocaleString()}</span>
     </div>
     ${discount > 0 ? `<div class="bill-row" style="color:#C0392B;font-weight:600;">
@@ -2628,7 +2662,6 @@ function printBill(orderId) {
     <div class="bill-row"><span>วิธีรับ</span><span>${deliveryMethodLabel}</span></div>
     ${order.address ? `<div class="bill-row"><span>ที่อยู่</span><span style="max-width:55%;text-align:right;">${order.address}</span></div>` : ''}
     ${order.deliveryDate ? `<div class="bill-row"><span>วันนัดส่ง</span><span>${order.deliveryDate.split('T')[0]}</span></div>` : ''}
-    <hr style="border:none;border-top:1px dashed #aaa;margin:8px 0;">
     ${itemsHtml}
     ${summaryHtml}
     <div class="bill-row" style="margin-top:4px;"><span>ชำระโดย</span><span>${payLabel}</span></div>
