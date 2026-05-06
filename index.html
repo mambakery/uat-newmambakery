@@ -760,8 +760,6 @@
     <div class="modal-body" id="orderModalBody"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('orderModal')">ปิด</button>
-      <!-- ✅ ปุ่มพิมพ์บิลสำหรับ admin -->
-      <button class="btn btn-secondary" id="adminPrintBillBtn" onclick="adminPrintBill()">🖨️ พิมพ์บิล</button>
       <button class="btn btn-primary" id="orderStatusBtn" onclick="updateOrderStatus()">อัพเดทสถานะ</button>
     </div>
   </div>
@@ -1055,7 +1053,10 @@ function renderProducts(catFilter = null) {
         <div class="product-price">฿${p.price}</div>
         <div class="product-qty">
           <button class="qty-btn" onclick="updateCart('${p.id}', -1, '${p.name}', ${p.price}, '${p.emoji}')">−</button>
-          <span class="qty-display" id="qdisp_${p.id}">${qty}</span>
+          <input class="qty-input" id="qdisp_${p.id}" type="number" min="0" value="${qty}"
+            onchange="setCartQty('${p.id}', this.value, '${p.name}', ${p.price}, '${p.emoji}')"
+            oninput="this.value=this.value.replace(/[^0-9]/g,'')"
+            style="width:52px;text-align:center;border:1.5px solid var(--border);border-radius:8px;padding:4px 0;font-size:1rem;font-family:'Sarabun',sans-serif;font-weight:600;color:var(--text);background:white;">
           <button class="qty-btn" onclick="updateCart('${p.id}', 1, '${p.name}', ${p.price}, '${p.emoji}')">+</button>
         </div>
       </div>
@@ -1068,6 +1069,21 @@ function filterCategory(cat, el) {
   el.classList.add('active');
   currentCatFilter = cat;
   renderProducts(cat);
+}
+
+// ✅ พิมพ์จำนวนตรงๆ ได้
+function setCartQty(id, val, name, price, emoji) {
+  const qty = Math.max(0, parseInt(val) || 0);
+  if (qty === 0) {
+    delete cart[id];
+  } else {
+    if (!cart[id]) cart[id] = { id, name, price, emoji, qty: 0 };
+    cart[id].qty = qty;
+  }
+  updateCartUI();
+  // sync ค่าใน input ให้ถูกต้อง
+  const el = document.getElementById('qdisp_' + id);
+  if (el) el.value = qty > 0 ? qty : 0;
 }
 
 function updateCart(id, delta, name, price, emoji) {
@@ -1090,6 +1106,11 @@ function updateCartUI() {
   document.getElementById('cartBadge').textContent = count;
   document.getElementById('cartTotal').textContent = `฿${total.toLocaleString()}`;
   if (count > 0) { fab.classList.remove('hidden'); } else { fab.classList.add('hidden'); }
+  // ✅ sync ค่า qty ใน input บน product card
+  document.querySelectorAll('.qty-input').forEach(el => {
+    const id = el.id.replace('qdisp_', '');
+    el.value = cart[id]?.qty || 0;
+  });
 }
 
 function openCart() {
@@ -1319,11 +1340,9 @@ function renderAdminDashboard() {
   const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
   // ออเดอร์วันนี้ = สร้างวันนี้
-  const todayCompact = todayStr.replace(/-/g, ''); // '20260420'
   const todayOrders = DB.orders.filter(o => {
-    // ✅ FIX FINAL: ดึงวันที่จาก Order ID (ORD-20260420-XXXXX) — ไม่มีปัญหา timezone เลย
-    const idDatePart = (o.id || '').split('-')[1] || '';
-    if (idDatePart.length === 8 && idDatePart === todayCompact) return true;
+    // ✅ FIX: ตัดแค่ 10 ตัวแรก (YYYY-MM-DD) จาก createdAt แล้วเปรียบเทียบตรงๆ
+    // ไม่ใช้ new Date() เพราะมีปัญหา UTC offset ทำให้วันเลื่อน
     const dateStr = (o.createdAt || '').substring(0, 10);
     return dateStr === todayStr;
   });
@@ -1568,28 +1587,9 @@ function viewOrder(id) {
     <div class="divider"></div>
     <div class="form-label mb-1">รายการสินค้า</div>
     <div class="items-list">
-      ${(() => {
-        // คำนวณ subtotal จากราคาสินค้าจริง (ก่อนหักส่วนลด)
-        const subtotal = order.items.reduce((s, i) => s + i.qty * i.price, 0);
-        const existingDiscount = subtotal - order.total;
-        return `
-          ${order.items.map(i => `<div class="item-row"><span>${i.name}</span><span>${i.qty} × ฿${i.price} = <strong>฿${(i.qty*i.price).toLocaleString()}</strong></span></div>`).join('')}
-          ${order.deliveryMethod === 'delivery' ? `<div class="item-row text-muted"><span>จัดส่งฟรี</span><span>฿0</span></div>` : ''}
-          <div class="item-row" style="border-top:1px solid var(--border);padding-top:6px;font-weight:600;">
-            <span>รวม</span><span>฿${subtotal.toLocaleString()}</span>
-          </div>
-          ${existingDiscount > 0 ? `
-          <div class="item-row" style="color:var(--danger);font-weight:600;">
-            <span>ส่วนลด</span><span>- ฿${existingDiscount.toLocaleString()}</span>
-          </div>
-          <div class="item-row" style="border-top:2px dashed var(--border);padding-top:6px;font-weight:700;font-size:1rem;">
-            <span>ยอดสุทธิ</span><span class="text-primary">฿${order.total.toLocaleString()}</span>
-          </div>` : `
-          <div class="item-row" style="font-weight:700;font-size:1rem;">
-            <span>ยอดสุทธิ</span><span class="text-primary">฿${order.total.toLocaleString()}</span>
-          </div>`}
-        `;
-      })()}
+      ${order.items.map(i => `<div class="item-row"><span>${i.name}</span><span>${i.qty} × ฿${i.price} = <strong>฿${(i.qty*i.price).toLocaleString()}</strong></span></div>`).join('')}
+      ${order.deliveryMethod === 'delivery' ? `<div class="item-row text-muted"><span>จัดส่งฟรี</span><span>฿0</span></div>` : ''}
+      <div class="item-row" style="border-top:1px solid var(--border);padding-top:6px;font-weight:700;"><span>รวม</span><span class="text-primary">฿${order.total.toLocaleString()}</span></div>
     </div>
     <div class="form-group">
       <div class="form-label">สถานะปัจจุบัน</div>
@@ -1607,7 +1607,7 @@ function viewOrder(id) {
     </div>
     <!-- ✅ ส่วนลด แสดงเมื่อเลือก พร้อมส่ง -->
     <div id="discountSection" style="display:${order.status==='ready'?'block':'none'};background:var(--primary-light);border-radius:var(--radius-sm);padding:1rem;margin-bottom:1rem;">
-      <div style="font-weight:700;color:var(--primary-dark);margin-bottom:10px;">🏷️ ให้ส่วนลดเพิ่ม (ถ้ามี)</div>
+      <div style="font-weight:700;color:var(--primary-dark);margin-bottom:10px;">🏷️ ให้ส่วนลด (ถ้ามี)</div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
         <select class="form-control" id="discountType" style="width:140px;flex-shrink:0;" onchange="calcDiscount(${order.total})">
           <option value="baht">฿ บาท</option>
@@ -1615,18 +1615,14 @@ function viewOrder(id) {
         </select>
         <input class="form-control" id="discountValue" type="number" min="0" max="${order.total}" placeholder="0" oninput="calcDiscount(${order.total})" style="flex:1;">
       </div>
-      <!-- แสดงเฉพาะเมื่อมีส่วนลด > 0 -->
-      <div id="discountBreakdown" style="display:none;">
-        <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.9rem;color:var(--text-muted);">
-          <span>ยอดก่อนลด</span><span id="originalTotal">฿${order.total.toLocaleString()}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.9rem;color:var(--danger);font-weight:600;">
-          <span>ส่วนลดเพิ่ม</span><span id="discountAmount">- ฿0</span>
-        </div>
-        <div style="border-top:2px dashed #ccc;margin:6px 0;"></div>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.9rem;color:var(--text-muted);">
+        <span>ยอดเดิม</span><span>฿${order.total.toLocaleString()}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:1.15rem;font-weight:700;">
-        <span>ยอดสุทธิใหม่</span><span id="finalTotal" style="color:var(--primary);">฿${order.total.toLocaleString()}</span>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;font-size:0.9rem;color:var(--danger);">
+        <span>ส่วนลด</span><span id="discountAmount">฿0</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:8px 0;font-size:1.15rem;font-weight:700;border-top:2px dashed #ccc;margin-top:6px;">
+        <span>ยอดสุทธิ</span><span id="finalTotal" style="color:var(--primary);">฿${order.total.toLocaleString()}</span>
       </div>
     </div>
   `;
@@ -1658,13 +1654,8 @@ function calcDiscount(originalTotal) {
     discountAmt = Math.min((val / 100) * originalTotal, originalTotal);
   }
   const finalAmt = originalTotal - discountAmt;
-  // ✅ แสดง breakdown (ยอดเดิม + ส่วนลด) เฉพาะเมื่อมีส่วนลด > 0
-  const breakdown = document.getElementById('discountBreakdown');
-  if (breakdown) breakdown.style.display = discountAmt > 0 ? 'block' : 'none';
-  const daEl = document.getElementById('discountAmount');
-  if (daEl) daEl.textContent = '- ฿' + discountAmt.toLocaleString(undefined, {maximumFractionDigits:2});
-  const ftEl = document.getElementById('finalTotal');
-  if (ftEl) ftEl.textContent = '฿' + finalAmt.toLocaleString(undefined, {maximumFractionDigits:2});
+  document.getElementById('discountAmount').textContent = '- ฿' + discountAmt.toLocaleString(undefined, {maximumFractionDigits:2});
+  document.getElementById('finalTotal').textContent = '฿' + finalAmt.toLocaleString(undefined, {maximumFractionDigits:2});
 }
 
 function updateOrderStatus() {
@@ -2580,46 +2571,21 @@ document.addEventListener('DOMContentLoaded', () => {
 // =========================================
 // ข้อ 2: PRINT BILL
 // =========================================
-// ✅ admin กดพิมพ์บิลจาก order modal
-function adminPrintBill() {
-  if (currentOrderId) printBill(currentOrderId);
-}
-
 function printBill(orderId) {
   const order = DB.orders.find(o => o.id === orderId);
   if (!order) return;
-  // รองรับทั้ง admin (ไม่มี riderPayMethod element) และ rider
+  const deliveryFee = 0; // ส่งฟรี
   const payEl = document.getElementById('riderPayMethod_' + orderId);
   const payMethod = payEl ? payEl.value : (order.payMethod || 'cash');
   const payLabel = payMethod === 'cash' ? '💵 เงินสด' : '🏦 โอนเงิน';
   const now = new Date().toLocaleString('th-TH');
-
-  // ✅ คำนวณ subtotal จากราคาสินค้าจริง (ก่อนส่วนลด)
-  const subtotal = order.items.filter(i => i.qty > 0).reduce((s, i) => s + i.qty * i.price, 0);
-  const discount = subtotal - order.total; // ส่วนลดที่มีอยู่
-
   const itemsHtml = order.items.filter(i => i.qty > 0)
     .map(i => `<div class="bill-row"><span>${i.name} ×${i.qty}</span><span>฿${(i.price*i.qty).toLocaleString()}</span></div>`).join('');
-
-  // ✅ สร้าง summary rows: จัดส่งฟรี / รวม / ส่วนลด / ยอดสุทธิ
-  const summaryHtml = `
-    ${order.deliveryMethod === 'delivery' ? `<div class="bill-row" style="color:#777;"><span>จัดส่งฟรี</span><span>฿0</span></div>` : ''}
-    <div class="bill-row" style="font-weight:600;border-top:1px dashed #aaa;padding-top:6px;margin-top:4px;">
-      <span>รวม</span><span>฿${subtotal.toLocaleString()}</span>
-    </div>
-    ${discount > 0 ? `
-    <div class="bill-row" style="color:#C0392B;font-weight:600;">
-      <span>ส่วนลด</span><span>- ฿${discount.toLocaleString()}</span>
-    </div>` : ''}
-    <div class="bill-total"><span>ยอดสุทธิ</span><span>฿${order.total.toLocaleString()}</span></div>
-  `;
-
-  // ✅ ใช้ getAttribute แทน .src ป้องกัน browser แปลงเป็น absolute URL
-  const logoSrc = document.getElementById('shopLogo')?.getAttribute('src') || '';
+  // ดึง URL ของ logo จาก shopLogo img ถ้ามี
+  const logoSrc = document.getElementById('shopLogo')?.src || '';
   const logoHtml = logoSrc
     ? `<img src="${logoSrc}" class="bill-logo" alt="logo">`
     : `<div style="font-size:3rem;margin-bottom:6px;">🥐</div>`;
-  const deliveryMethodLabel = order.deliveryMethod === 'delivery' ? '🚚 ส่งบ้าน' : '🏪 รับเอง';
   document.getElementById('printBillArea').innerHTML = `
     <div class="bill-header">
       ${logoHtml}
@@ -2630,13 +2596,12 @@ function printBill(orderId) {
     <div class="bill-row"><span>เลขที่บิล</span><span>${order.id}</span></div>
     <div class="bill-row"><span>ลูกค้า</span><span>${order.customer}</span></div>
     <div class="bill-row"><span>โทร</span><span>${order.phone}</span></div>
-    <div class="bill-row"><span>วิธีรับ</span><span>${deliveryMethodLabel}</span></div>
     ${order.address ? `<div class="bill-row"><span>ที่อยู่</span><span style="max-width:55%;text-align:right;">${order.address}</span></div>` : ''}
-    ${order.deliveryDate ? `<div class="bill-row"><span>วันนัดส่ง</span><span>${order.deliveryDate.split('T')[0]}</span></div>` : ''}
     <hr style="border:none;border-top:1px dashed #aaa;margin:8px 0;">
     ${itemsHtml}
-    ${summaryHtml}
-    <div class="bill-row" style="margin-top:4px;"><span>ชำระโดย</span><span>${payLabel}</span></div>
+    ${deliveryFee > 0 ? `<div class="bill-row text-muted"><span>ค่าจัดส่ง</span><span>฿50</span></div>` : ''}
+    <div class="bill-total"><span>ยอดรวม</span><span>฿${order.total.toLocaleString()}</span></div>
+    <div class="bill-row"><span>ชำระโดย</span><span>${payLabel}</span></div>
     <div class="bill-footer">ขอบคุณที่ใช้บริการ 🙏<br>แหม่มเบเกอรี่</div>
   `;
   document.getElementById('printBillArea').style.display = 'block';
