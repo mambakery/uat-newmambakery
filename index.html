@@ -1322,7 +1322,7 @@ function adminTab(tab, el) {
   // ✅ FIX: โหลดข้อมูลใหม่ทุกครั้งที่กด Dashboard เพื่อให้ตัวเลขอัปเดต
   if (tab === 'dashboard') loadOrders();
   if (tab === 'orders') loadOrders();
-  if (tab === 'products') renderProducts_admin();
+  if (tab === 'products') loadProducts();
   if (tab === 'production') renderProduction();
   if (tab === 'delivery-assign') { renderAssign(); renderAssignHistory(); }
   if (tab === 'payments') loadOrdersForPayments();
@@ -1818,24 +1818,99 @@ function saveProduct() {
   if (editingProductId) {
     const idx = DB.products.findIndex(p => p.id === editingProductId);
     if (idx !== -1) { DB.products[idx] = { ...DB.products[idx], name, price, stock, category, desc, emoji }; }
-    showToast('อัพเดทสินค้าสำเร็จ', 'success');
+    closeModal('productModal');
+    renderProducts_admin();
+
+    const params = new URLSearchParams({
+      action: 'updateProduct',
+      token: currentUser?.token || '',
+      id: editingProductId,
+      name, price, stock, category,
+      description: desc,
+      emoji,
+    });
+    fetch(`${GAS_URL}?${params}`)
+      .then(r => r.json())
+      .then(res => {
+        if (res.success) showToast('✅ อัพเดทสินค้าสำเร็จ', 'success');
+        else showToast('❌ บันทึกไม่สำเร็จ: ' + res.error, 'error');
+      })
+      .catch(() => showToast('❌ ไม่สามารถเชื่อมต่อได้', 'error'));
   } else {
-    DB.products.push({ id: 'P' + Date.now().toString().slice(-3), name, price, stock, category, desc, emoji, status: 'active' });
-    showToast('เพิ่มสินค้าสำเร็จ', 'success');
+    closeModal('productModal');
+    showToast('กำลังบันทึก...', 'info');
+
+    const params = new URLSearchParams({
+      action: 'createProduct',
+      token: currentUser?.token || '',
+      name, price, stock, category,
+      description: desc,
+      emoji,
+      status: 'active',
+    });
+    fetch(`${GAS_URL}?${params}`)
+      .then(r => r.json())
+      .then(res => {
+        if (res.success) {
+          DB.products.push({ id: res.id, name, price, stock, category, desc, emoji, status: 'active' });
+          renderProducts_admin();
+          showToast('✅ เพิ่มสินค้าสำเร็จ', 'success');
+        } else showToast('❌ บันทึกไม่สำเร็จ: ' + res.error, 'error');
+      })
+      .catch(() => showToast('❌ ไม่สามารถเชื่อมต่อได้', 'error'));
   }
-  closeModal('productModal');
-  renderProducts_admin();
 }
 
 function toggleProduct(id) {
   const p = DB.products.find(x => x.id === id);
-  if (p) { p.status = p.status === 'active' ? 'inactive' : 'active'; renderProducts_admin(); showToast('อัพเดทสถานะสินค้าแล้ว', 'success'); }
+  if (!p) return;
+  const newStatus = p.status === 'active' ? 'inactive' : 'active';
+  p.status = newStatus; // optimistic update
+  renderProducts_admin();
+  showToast('กำลังบันทึก...', 'info');
+
+  const params = new URLSearchParams({
+    action: 'updateProduct',
+    token: currentUser?.token || '',
+    id,
+    status: newStatus,
+  });
+  fetch(`${GAS_URL}?${params}`)
+    .then(r => r.json())
+    .then(res => {
+      if (res.success) {
+        showToast(`✅ ${newStatus === 'active' ? 'เปิดขาย' : 'ปิดขาย'}สินค้าแล้ว`, 'success');
+      } else {
+        // rollback ถ้า error
+        p.status = newStatus === 'active' ? 'inactive' : 'active';
+        renderProducts_admin();
+        showToast('❌ บันทึกไม่สำเร็จ: ' + res.error, 'error');
+      }
+    })
+    .catch(() => {
+      p.status = newStatus === 'active' ? 'inactive' : 'active';
+      renderProducts_admin();
+      showToast('❌ ไม่สามารถเชื่อมต่อได้', 'error');
+    });
 }
 
 function deleteProduct(id) {
   if (!confirm('ยืนยันการลบสินค้า?')) return;
   const idx = DB.products.findIndex(x => x.id === id);
-  if (idx !== -1) { DB.products.splice(idx, 1); renderProducts_admin(); showToast('ลบสินค้าแล้ว', 'success'); }
+  if (idx !== -1) { DB.products.splice(idx, 1); renderProducts_admin(); }
+
+  const params = new URLSearchParams({
+    action: 'deleteProduct',
+    token: currentUser?.token || '',
+    id,
+  });
+  fetch(`${GAS_URL}?${params}`)
+    .then(r => r.json())
+    .then(res => {
+      if (res.success) showToast('✅ ลบสินค้าแล้ว', 'success');
+      else showToast('❌ ลบไม่สำเร็จ: ' + res.error, 'error');
+    })
+    .catch(() => showToast('❌ ไม่สามารถเชื่อมต่อได้', 'error'));
 }
 
 // PRODUCTION PLAN
@@ -2114,6 +2189,37 @@ function setRiderDate(daysOffset) {
   const dd = String(d.getDate()).padStart(2, '0');
   document.getElementById('riderDateFilter').value = `${yyyy}-${mm}-${dd}`;
   renderRiderPage();
+}
+
+// =========================================
+// โหลดสินค้าจาก GAS (แก้ bug: status ไม่ถูก save)
+// =========================================
+function loadProducts() {
+  if (!currentUser?.token) { renderProducts_admin(); return; }
+  fetch(`${GAS_URL}?action=getProducts&token=${encodeURIComponent(currentUser.token)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (Array.isArray(data) && data.length > 0) {
+        // merge: ใช้ข้อมูลจาก GAS เป็นหลัก, fallback hardcoded ถ้ายังไม่มีใน Sheets
+        data.forEach(p => {
+          const idx = DB.products.findIndex(x => x.id === p.id);
+          const mapped = {
+            id: p.id,
+            name: p.name,
+            price: parseFloat(p.price) || 0,
+            stock: parseInt(p.stock) || 0,
+            category: p.category || 'filling',
+            desc: p.description || p.desc || '',
+            emoji: p.emoji || '🍰',
+            status: (p.status || 'active').toLowerCase(),
+          };
+          if (idx !== -1) DB.products[idx] = { ...DB.products[idx], ...mapped };
+          else DB.products.push(mapped);
+        });
+      }
+      renderProducts_admin();
+    })
+    .catch(() => renderProducts_admin()); // fallback to hardcoded if offline
 }
 
 function loadUsers() {
