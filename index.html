@@ -879,7 +879,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 // GAS API URL
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbywMKzEFP1WqgrQnhJHgqETJn9NaPkVE6IEe1FBs6wfEKrVynqUEe1Dm3Mt-R49gdX9/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzw42Yn8sFVvQePGH8JxiJ6ek0CrOOnMAmSCQFkQVv2c8o4Z6zBNAr_GO0umfVDZWNf/exec';
 
 // =========================================
 // HELPER: แปลง Date object/string เป็น YYYY-MM-DD โดยใช้ local timezone (ไม่ใช่ UTC)
@@ -1869,28 +1869,35 @@ function toggleProduct(id) {
   renderProducts_admin();
   showToast('กำลังบันทึก...', 'info');
 
+  // ส่ง fields ครบเพื่อให้ GAS Upsert ได้ (กรณีสินค้า hardcoded ยังไม่มีใน Sheets)
   const params = new URLSearchParams({
     action: 'updateProduct',
     token: currentUser?.token || '',
     id,
     status: newStatus,
+    name: p.name,
+    price: p.price,
+    stock: p.stock,
+    category: p.category,
+    description: p.desc || '',
+    emoji: p.emoji || '\ud83c\udf70',
   });
   fetch(`${GAS_URL}?${params}`)
     .then(r => r.json())
     .then(res => {
       if (res.success) {
-        showToast(`✅ ${newStatus === 'active' ? 'เปิดขาย' : 'ปิดขาย'}สินค้าแล้ว`, 'success');
+        showToast(`\u2705 ${newStatus === 'active' ? '\u0e40\u0e1b\u0e34\u0e14\u0e02\u0e32\u0e22' : '\u0e1b\u0e34\u0e14\u0e02\u0e32\u0e22'}\u0e2a\u0e34\u0e19\u0e04\u0e49\u0e32\u0e41\u0e25\u0e49\u0e27`, 'success');
       } else {
         // rollback ถ้า error
         p.status = newStatus === 'active' ? 'inactive' : 'active';
         renderProducts_admin();
-        showToast('❌ บันทึกไม่สำเร็จ: ' + res.error, 'error');
+        showToast('\u274c \u0e1a\u0e31\u0e19\u0e17\u0e36\u0e01\u0e44\u0e21\u0e48\u0e2a\u0e33\u0e40\u0e23\u0e47\u0e08: ' + res.error, 'error');
       }
     })
     .catch(() => {
       p.status = newStatus === 'active' ? 'inactive' : 'active';
       renderProducts_admin();
-      showToast('❌ ไม่สามารถเชื่อมต่อได้', 'error');
+      showToast('\u274c \u0e44\u0e21\u0e48\u0e2a\u0e32\u0e21\u0e32\u0e23\u0e16\u0e40\u0e0a\u0e37\u0e48\u0e2d\u0e21\u0e15\u0e48\u0e2d\u0e44\u0e14\u0e49', 'error');
     });
 }
 
