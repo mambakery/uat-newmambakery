@@ -226,16 +226,18 @@
   .bill-logo { width:90px; height:90px; border-radius:50%; object-fit:cover; margin-bottom:8px; display:block; margin-left:auto; margin-right:auto; }
   .bill-title { font-size:18px; font-weight:700; font-family:'Mitr',sans-serif; }
   .bill-sub { font-size:12px; color:#555; margin-top:2px; }
-  /* ✅ Reorder feature */
-  .reorder-card { border:1.5px solid var(--border); border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:10px; cursor:pointer; transition:all 0.2s; background:white; }
-  .reorder-card:hover { border-color:var(--primary); background:var(--primary-light); }
-  .reorder-card.selected { border-color:var(--primary); background:var(--primary-light); }
-  .reorder-date { font-size:0.8rem; color:var(--text-muted); margin-bottom:4px; }
-  .reorder-items { font-size:0.85rem; color:var(--text); line-height:1.6; }
-  .reorder-total { font-weight:700; color:var(--primary); font-size:1rem; margin-top:4px; }
   .bill-row { display:flex; justify-content:space-between; padding:3px 0; font-size:13px; }
   .bill-total { display:flex; justify-content:space-between; padding:8px 0; font-size:16px; font-weight:700; border-top:2px dashed #333; margin-top:6px; }
   .bill-footer { text-align:center; margin-top:12px; font-size:11px; color:#777; border-top:1px dashed #aaa; padding-top:8px; }
+  /* ✅ bill table */
+  .bill-table { width:100%; border-collapse:collapse; font-size:13px; margin:4px 0; }
+  .bill-table th { font-weight:700; color:var(--primary,#D4854A); border-bottom:1px solid #ccc; padding:4px 6px; font-size:12px; }
+  .bill-table td { padding:3px 6px; vertical-align:top; }
+  .bill-table .col-name { width:38%; }
+  .bill-table .col-qty { width:12%; text-align:center; }
+  .bill-table .col-price { width:16%; text-align:right; }
+  .bill-table .col-total { width:34%; text-align:right; font-weight:600; }
+  .bill-table tr:last-child td { border-bottom:1px dashed #aaa; padding-bottom:6px; }
 
   /* OWNER CHART COLORS */
   .chart-bar { transition: opacity 0.2s; }
@@ -283,47 +285,9 @@
   </div>
   <div style="display:flex;flex-direction:column;gap:1rem;width:100%;max-width:320px;">
     <button class="btn btn-lg" style="background:white;color:var(--primary);font-weight:700;border-radius:50px;justify-content:center;" onclick="goTo('page-customer')">🛒 สั่งซื้อสินค้า</button>
-    <button class="btn btn-lg" style="background:rgba(255,255,255,0.9);color:var(--primary-dark);font-weight:700;border-radius:50px;justify-content:center;" onclick="openReorderModal()">🔄 สั่งซ้ำจากออเดอร์เดิม</button>
     <button class="btn btn-lg" style="background:rgba(255,255,255,0.15);color:white;border:2px solid rgba(255,255,255,0.4);border-radius:50px;justify-content:center;" onclick="goTo('page-login')">🔐 เข้าสู่ระบบ (สำหรับทีมงาน)</button>
   </div>
   <p style="color:rgba(255,255,255,0.5);font-size:0.8rem;">© 2569 ร้านแหม่มเบเกอรี่ - ระบบจัดการร้าน</p>
-</div>
-
-<!-- ===== REORDER MODAL ===== -->
-<div class="modal-overlay" id="reorderModal" onclick="if(event.target===this)closeModal('reorderModal')">
-  <div class="modal" style="max-height:90vh;overflow-y:auto;">
-    <div class="modal-header">
-      <h3 class="modal-title">🔄 สั่งซ้ำจากออเดอร์เดิม</h3>
-      <button class="modal-close" onclick="closeModal('reorderModal')">×</button>
-    </div>
-    <div class="modal-body">
-      <!-- Step 1: กรอกเบอร์โทร -->
-      <div id="reorderStep1">
-        <p style="color:var(--text-muted);margin-bottom:1rem;font-size:0.9rem;">กรอกเบอร์โทรศัพท์เพื่อค้นหาประวัติออเดอร์ของคุณ</p>
-        <div class="form-group">
-          <label class="form-label">เบอร์โทรศัพท์ *</label>
-          <input class="form-control" id="reorderPhone" type="tel" maxlength="10" inputmode="numeric"
-            placeholder="0xx-xxx-xxxx" onkeydown="if(event.key==='Enter')searchReorderHistory()">
-        </div>
-        <button class="btn btn-primary btn-block" onclick="searchReorderHistory()" id="reorderSearchBtn">
-          🔍 ค้นหาออเดอร์เดิม
-        </button>
-      </div>
-      <!-- Step 2: แสดงรายการออเดอร์ -->
-      <div id="reorderStep2" style="display:none;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-          <button onclick="document.getElementById('reorderStep2').style.display='none';document.getElementById('reorderStep1').style.display='block';"
-            style="background:none;border:none;color:var(--primary);cursor:pointer;font-size:0.9rem;">← เปลี่ยนเบอร์</button>
-          <span style="font-size:0.85rem;color:var(--text-muted);">ออเดอร์ของเบอร์ <strong id="reorderPhoneDisplay"></strong></span>
-        </div>
-        <div id="reorderList"></div>
-      </div>
-    </div>
-    <div class="modal-footer" id="reorderFooter" style="display:none;">
-      <button class="btn btn-secondary" onclick="closeModal('reorderModal')">ยกเลิก</button>
-      <button class="btn btn-primary" onclick="confirmReorder()">✅ โหลดรายการนี้สู่ตะกร้า</button>
-    </div>
-  </div>
 </div>
 
 <!-- ===== PAGE: LOGIN ===== -->
@@ -805,6 +769,7 @@
     <div class="modal-body" id="orderModalBody"></div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('orderModal')">ปิด</button>
+      <button class="btn btn-secondary" onclick="adminPrintBill()" style="display:flex;align-items:center;gap:6px;">🖨️ พิมพ์บิล</button>
       <button class="btn btn-primary" id="orderStatusBtn" onclick="updateOrderStatus()">อัพเดทสถานะ</button>
     </div>
   </div>
@@ -1098,7 +1063,10 @@ function renderProducts(catFilter = null) {
         <div class="product-price">฿${p.price}</div>
         <div class="product-qty">
           <button class="qty-btn" onclick="updateCart('${p.id}', -1, '${p.name}', ${p.price}, '${p.emoji}')">−</button>
-          <span class="qty-display" id="qdisp_${p.id}">${qty}</span>
+          <input class="qty-input" id="qdisp_${p.id}" type="number" min="0" value="${qty}"
+            onchange="setCartQty('${p.id}', this.value, '${p.name}', ${p.price}, '${p.emoji}')"
+            oninput="this.value=this.value.replace(/[^0-9]/g,'')"
+            style="width:52px;text-align:center;border:1.5px solid var(--border);border-radius:8px;padding:4px 0;font-size:1rem;font-family:'Sarabun',sans-serif;font-weight:600;color:var(--text);background:white;">
           <button class="qty-btn" onclick="updateCart('${p.id}', 1, '${p.name}', ${p.price}, '${p.emoji}')">+</button>
         </div>
       </div>
@@ -1111,6 +1079,21 @@ function filterCategory(cat, el) {
   el.classList.add('active');
   currentCatFilter = cat;
   renderProducts(cat);
+}
+
+// ✅ พิมพ์จำนวนตรงๆ ได้
+function setCartQty(id, val, name, price, emoji) {
+  const qty = Math.max(0, parseInt(val) || 0);
+  if (qty === 0) {
+    delete cart[id];
+  } else {
+    if (!cart[id]) cart[id] = { id, name, price, emoji, qty: 0 };
+    cart[id].qty = qty;
+  }
+  updateCartUI();
+  // sync ค่าใน input ให้ถูกต้อง
+  const el = document.getElementById('qdisp_' + id);
+  if (el) el.value = qty > 0 ? qty : 0;
 }
 
 function updateCart(id, delta, name, price, emoji) {
@@ -1133,6 +1116,11 @@ function updateCartUI() {
   document.getElementById('cartBadge').textContent = count;
   document.getElementById('cartTotal').textContent = `฿${total.toLocaleString()}`;
   if (count > 0) { fab.classList.remove('hidden'); } else { fab.classList.add('hidden'); }
+  // ✅ sync ค่า qty ใน input บน product card
+  document.querySelectorAll('.qty-input').forEach(el => {
+    const id = el.id.replace('qdisp_', '');
+    el.value = cart[id]?.qty || 0;
+  });
 }
 
 function openCart() {
@@ -2359,10 +2347,7 @@ function confirmDelivery(id) {
     .catch(() => showToast('❌ ไม่สามารถเชื่อมต่อได้', 'error'));
 }
 
-function printBillFromModal(id) {
-  closeModal('deliveryModal');
-  setTimeout(() => printBill(id), 100);
-}
+// printBillFromModal defined in PRINT BILL section
 
 function adjustRiderItem(idx, delta, orderId) {
   const order = DB.orders.find(o => o.id === orderId);
@@ -2574,119 +2559,15 @@ function showToast(msg, type = 'success') {
 }
 
 // =========================================
-// REORDER FEATURE
+// PRINT BILL
 // =========================================
-let reorderSelectedId = null;
-let reorderOrders = [];
-
-function openReorderModal() {
-  reorderSelectedId = null;
-  reorderOrders = [];
-  document.getElementById('reorderPhone').value = '';
-  document.getElementById('reorderStep1').style.display = 'block';
-  document.getElementById('reorderStep2').style.display = 'none';
-  document.getElementById('reorderFooter').style.display = 'none';
-  openModal('reorderModal');
-  setTimeout(() => document.getElementById('reorderPhone').focus(), 300);
+// ✅ admin กดพิมพ์บิลจาก orderModal
+function adminPrintBill() {
+  if (currentOrderId) printBill(currentOrderId);
 }
 
-async function searchReorderHistory() {
-  const phone = String(document.getElementById('reorderPhone').value.trim());
-  if (phone.length < 9) { showToast('กรุณากรอกเบอร์โทรให้ครบ', 'error'); return; }
-
-  const btn = document.getElementById('reorderSearchBtn');
-  btn.textContent = '⏳ กำลังค้นหา...';
-  btn.disabled = true;
-
-  try {
-    const res = await fetch(`${GAS_URL}?action=getOrdersByPhone&phone=${encodeURIComponent(phone)}`);
-    const data = await res.json();
-
-    btn.textContent = '🔍 ค้นหาออเดอร์เดิม';
-    btn.disabled = false;
-
-    if (data.error || !Array.isArray(data) || data.length === 0) {
-      showToast('ไม่พบประวัติออเดอร์ของเบอร์นี้', 'error');
-      return;
-    }
-
-    // เรียงล่าสุดก่อน เอาแค่ 5 รายการ
-    reorderOrders = data
-      .filter(o => o.items && o.items.length > 0)
-      .slice(0, 5);
-
-    document.getElementById('reorderPhoneDisplay').textContent = phone;
-    renderReorderList();
-    document.getElementById('reorderStep1').style.display = 'none';
-    document.getElementById('reorderStep2').style.display = 'block';
-
-  } catch(e) {
-    btn.textContent = '🔍 ค้นหาออเดอร์เดิม';
-    btn.disabled = false;
-    showToast('เกิดข้อผิดพลาด กรุณาลองใหม่', 'error');
-  }
-}
-
-function renderReorderList() {
-  const list = document.getElementById('reorderList');
-  if (reorderOrders.length === 0) {
-    list.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:1rem;">ไม่พบประวัติออเดอร์</p>';
-    return;
-  }
-  list.innerHTML = reorderOrders.map((o, idx) => {
-    const dateStr = (o.id || '').split('-').slice(0,2).join('-').replace('ORD-','') || o.deliveryDate || '';
-    const itemsSummary = (o.items || []).slice(0,3).map(i => `${i.name} ×${i.qty}`).join(', ')
-      + (o.items.length > 3 ? ` และอีก ${o.items.length - 3} รายการ` : '');
-    return `
-      <div class="reorder-card" id="reorderCard_${idx}" onclick="selectReorder(${idx})">
-        <div class="reorder-date">📅 ออเดอร์ ${o.id}</div>
-        <div class="reorder-items">${itemsSummary}</div>
-        <div class="reorder-total">฿${(o.total || 0).toLocaleString()}</div>
-      </div>`;
-  }).join('');
-}
-
-function selectReorder(idx) {
-  reorderSelectedId = idx;
-  document.querySelectorAll('.reorder-card').forEach((el, i) => {
-    el.classList.toggle('selected', i === idx);
-  });
-  document.getElementById('reorderFooter').style.display = 'flex';
-}
-
-function confirmReorder() {
-  if (reorderSelectedId === null) return;
-  const order = reorderOrders[reorderSelectedId];
-  if (!order || !order.items) return;
-
-  // โหลด products ปัจจุบันก่อนเพื่อ check ราคาล่าสุด
-  const currentProducts = DB.products || [];
-
-  // clear cart เดิม
-  cart = {};
-
-  // โหลด items จาก order เดิม
-  order.items.forEach(item => {
-    if (!item.id || item.qty <= 0) return;
-    // หาราคาล่าสุดจาก products ปัจจุบัน
-    const currentProduct = currentProducts.find(p => p.id === item.id);
-    const price = currentProduct ? currentProduct.price : item.price;
-    const name = currentProduct ? currentProduct.name : item.name;
-    const emoji = currentProduct ? currentProduct.emoji : (item.emoji || '🍰');
-    cart[item.id] = { id: item.id, name, price, emoji, qty: item.qty };
-  });
-
-  updateCartUI();
-  closeModal('reorderModal');
-
-  // ไปหน้าสั่งสินค้า
-  goTo('page-customer');
-
-  const count = Object.values(cart).reduce((s,i) => s + i.qty, 0);
-  showToast(`✅ โหลด ${count} รายการจากออเดอร์เดิมแล้ว แก้ไขได้ตามต้องการ`, 'success');
-
-  // เปิด cart ให้ลูกค้าเห็น
-  setTimeout(() => openCart(), 500);
+function printBillFromModal(orderId) {
+  printBill(orderId);
 }
 
 // =========================================
@@ -2712,18 +2593,62 @@ document.addEventListener('DOMContentLoaded', () => {
 function printBill(orderId) {
   const order = DB.orders.find(o => o.id === orderId);
   if (!order) return;
-  const deliveryFee = 0; // ส่งฟรี
   const payEl = document.getElementById('riderPayMethod_' + orderId);
   const payMethod = payEl ? payEl.value : (order.payMethod || 'cash');
   const payLabel = payMethod === 'cash' ? '💵 เงินสด' : '🏦 โอนเงิน';
   const now = new Date().toLocaleString('th-TH');
-  const itemsHtml = order.items.filter(i => i.qty > 0)
-    .map(i => `<div class="bill-row"><span>${i.name} ×${i.qty}</span><span>฿${(i.price*i.qty).toLocaleString()}</span></div>`).join('');
-  // ดึง URL ของ logo จาก shopLogo img ถ้ามี
-  const logoSrc = document.getElementById('shopLogo')?.src || '';
+
+  // ✅ คำนวณ subtotal จากราคาสินค้าจริง (ก่อนหักส่วนลด)
+  const subtotal = order.items.filter(i => i.qty > 0).reduce((s, i) => s + i.qty * i.price, 0);
+  const discount = subtotal - order.total; // ส่วนลดที่มีอยู่
+
+  // ✅ แสดงในรูปแบบตาราง รายการ / จำนวน / หน่วยละ / จำนวนเงิน
+  const itemsHtml = `
+    <table class="bill-table">
+      <thead>
+        <tr>
+          <th class="col-name">รายการ</th>
+          <th class="col-qty">จำนวน</th>
+          <th class="col-price">หน่วยละ</th>
+          <th class="col-total">จำนวนเงิน</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${order.items.filter(i => i.qty > 0).map(i => `
+          <tr>
+            <td class="col-name">${i.name}</td>
+            <td class="col-qty">${i.qty}</td>
+            <td class="col-price">฿${i.price.toLocaleString()}</td>
+            <td class="col-total">฿${(i.price * i.qty).toLocaleString()}</td>
+          </tr>`).join('')}
+        ${order.deliveryMethod === 'delivery' ? `
+          <tr>
+            <td class="col-name" style="color:#777;">จัดส่งฟรี</td>
+            <td></td><td></td>
+            <td class="col-total" style="color:#777;">฿0</td>
+          </tr>` : ''}
+      </tbody>
+    </table>
+  `;
+
+  // ✅ summary: รวม / ส่วนลด / ยอดสุทธิ
+  const summaryHtml = `
+    <div class="bill-row" style="font-weight:600;padding-top:4px;margin-top:2px;">
+      <span>รวม</span><span>฿${subtotal.toLocaleString()}</span>
+    </div>
+    ${discount > 0 ? `<div class="bill-row" style="color:#C0392B;font-weight:600;">
+      <span>ส่วนลด</span><span>- ฿${discount.toLocaleString()}</span>
+    </div>` : ''}
+    <div class="bill-total"><span>ยอดสุทธิ</span><span>฿${order.total.toLocaleString()}</span></div>
+  `;
+
+  // ✅ ใช้ getAttribute แทน .src ป้องกัน browser แปลงเป็น absolute URL
+  const logoSrc = document.getElementById('shopLogo')?.getAttribute('src') || '';
   const logoHtml = logoSrc
     ? `<img src="${logoSrc}" class="bill-logo" alt="logo">`
     : `<div style="font-size:3rem;margin-bottom:6px;">🥐</div>`;
+  const deliveryMethodLabel = order.deliveryMethod === 'delivery' ? '🚚 ส่งบ้าน' : '🏪 รับเอง';
+
   document.getElementById('printBillArea').innerHTML = `
     <div class="bill-header">
       ${logoHtml}
@@ -2734,12 +2659,12 @@ function printBill(orderId) {
     <div class="bill-row"><span>เลขที่บิล</span><span>${order.id}</span></div>
     <div class="bill-row"><span>ลูกค้า</span><span>${order.customer}</span></div>
     <div class="bill-row"><span>โทร</span><span>${order.phone}</span></div>
+    <div class="bill-row"><span>วิธีรับ</span><span>${deliveryMethodLabel}</span></div>
     ${order.address ? `<div class="bill-row"><span>ที่อยู่</span><span style="max-width:55%;text-align:right;">${order.address}</span></div>` : ''}
-    <hr style="border:none;border-top:1px dashed #aaa;margin:8px 0;">
+    ${order.deliveryDate ? `<div class="bill-row"><span>วันนัดส่ง</span><span>${order.deliveryDate.split('T')[0]}</span></div>` : ''}
     ${itemsHtml}
-    ${deliveryFee > 0 ? `<div class="bill-row text-muted"><span>ค่าจัดส่ง</span><span>฿50</span></div>` : ''}
-    <div class="bill-total"><span>ยอดรวม</span><span>฿${order.total.toLocaleString()}</span></div>
-    <div class="bill-row"><span>ชำระโดย</span><span>${payLabel}</span></div>
+    ${summaryHtml}
+    <div class="bill-row" style="margin-top:4px;"><span>ชำระโดย</span><span>${payLabel}</span></div>
     <div class="bill-footer">ขอบคุณที่ใช้บริการ 🙏<br>แหม่มเบเกอรี่</div>
   `;
   document.getElementById('printBillArea').style.display = 'block';
