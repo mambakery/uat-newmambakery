@@ -214,28 +214,53 @@
     .admin-content { padding: 1rem; }
   }
 
-  /* PRINT */
+  /* PRINT — แก้ปัญหาพิมพ์หลายชุด */
   @media print {
-    body * { visibility: hidden; }
-    #printBillArea, #printBillArea * { visibility: visible; }
+    /* ซ่อนทุกอย่างยกเว้นบิล โดยไม่ใช้ visibility:hidden
+       เพื่อป้องกัน fixed element ลอยซ้ำทุกหน้า */
+    body > *:not(#printBillArea) { display: none !important; }
+    .modal-overlay, .toast-container { display: none !important; }
+
     #printBillArea {
-      position: fixed; inset: 0;
+      display: block !important;
+      position: static !important;
+      width: 100%;
       background: white;
-      display: flex !important;
-      align-items: flex-start;
-      justify-content: center;
-      padding: 20px;
-      font-family: 'Sarabun', sans-serif;
+      padding: 0;
+      margin: 0;
     }
-    .nav, .sidebar, .cart-fab, .btn, .modal-overlay { display: none !important; }
-    @page { margin: 10mm; size: A5 portrait; }
-    .bill-items th, .bill-items td { font-size: 11.5px !important; }
-    .bill-info td { font-size: 12px !important; }
+
+    /* บิล wrap อยู่ใน 1 หน้า */
+    .bill-wrap {
+      width: 100%;
+      max-width: 100%;
+      padding: 0;
+      margin: 0;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+
+    /* ไม่ให้ตาราง รายการ แตกข้ามหน้า */
+    .bill-items { page-break-inside: avoid; break-inside: avoid; }
+    .bill-items tr { page-break-inside: avoid; break-inside: avoid; }
+    .bill-summary { page-break-inside: avoid; break-inside: avoid; }
+
+    /* ขนาดตัวอักษรสำหรับพิมพ์ */
+    .bill-items th, .bill-items td { font-size: 11px !important; padding: 3px 4px !important; }
+    .bill-info td { font-size: 11.5px !important; }
+    .bill-title { font-size: 18px !important; }
+    .bill-summary td { font-size: 12px !important; }
+    .bill-net td { font-size: 14px !important; }
+
+    @page {
+      size: A5 portrait;
+      margin: 10mm 12mm;
+    }
   }
   /* ===== BILL PRINT STYLES ===== */
   #printBillArea { display: none; }
   #printBillArea * { box-sizing: border-box; }
-  .bill-wrap { width:100%; max-width:560px; margin:0 auto; font-family:'Sarabun',sans-serif; font-size:13px; color:#1a1a1a; background:white; padding:20px; }
+  .bill-wrap { width:100%; max-width:560px; margin:0 auto; font-family:'Sarabun',sans-serif; font-size:13px; color:#1a1a1a; background:white; padding:16px 20px; }
   .bill-header { text-align:center; padding-bottom:12px; margin-bottom:14px; }
   .bill-logo { width:90px; height:90px; border-radius:50%; object-fit:cover; margin-bottom:8px; display:block; margin-left:auto; margin-right:auto; }
   .bill-logo-emoji { font-size:3.5rem; margin-bottom:6px; }
@@ -244,29 +269,32 @@
 
   /* Info rows */
   .bill-info { width:100%; border-collapse:collapse; margin-bottom:14px; }
-  .bill-info td { padding:3px 0; font-size:13px; vertical-align:top; }
-  .bill-info td:first-child { color:#555; width:28%; white-space:nowrap; }
-  .bill-info td:nth-child(2) { width:4px; padding:3px 4px; color:#555; }
-  .bill-info td:last-child { font-weight:500; word-break:break-all; }
-  .bill-info .bill-id-val { font-weight:700; color:#1a1a1a; font-size:11.5px; }
+  .bill-info td { padding:4px 0; font-size:13px; vertical-align:top; border-bottom:0.5px solid #eee; }
+  .bill-info tr:last-child td { border-bottom: none; }
+  .bill-info td:first-child { color:#555; width:26%; white-space:nowrap; }
+  .bill-info td:nth-child(2) { width:14px; padding:4px 4px; color:#555; }
+  .bill-info td:last-child { font-weight:500; word-break:break-word; }
+  .bill-info .bill-id-val { font-weight:700; color:#1a1a1a; font-size:12px; letter-spacing:0.3px; }
 
   /* Items table */
   .bill-items { width:100%; border-collapse:collapse; margin:10px 0; }
-  .bill-items thead tr { border-top:1.5px solid #333; border-bottom:1.5px solid #333; }
-  .bill-items th { padding:5px 4px; font-size:12px; font-weight:700; text-align:center; }
+  .bill-items thead tr { border-top:2px solid #333; border-bottom:1.5px solid #333; background:#f9f6f2; }
+  .bill-items th { padding:6px 4px; font-size:12px; font-weight:700; text-align:center; color:#5a3e28; }
   .bill-items th:first-child { text-align:left; }
-  .bill-items tbody tr { border-bottom:0.5px solid #ddd; }
-  .bill-items td { padding:4px 4px; font-size:12.5px; vertical-align:middle; text-align:center; }
+  .bill-items tbody tr { border-bottom:0.5px solid #e8e0d8; }
+  .bill-items tbody tr:last-child { border-bottom: 1.5px solid #333; }
+  .bill-items td { padding:5px 4px; font-size:12.5px; vertical-align:middle; text-align:center; }
   .bill-items td:first-child { text-align:left; }
   .bill-items td:last-child { font-weight:700; text-align:right; }
   .bill-items th:last-child { text-align:right; }
 
   /* Summary */
-  .bill-summary { width:100%; border-collapse:collapse; margin-top:6px; }
-  .bill-summary td { padding:3px 4px; font-size:13px; }
+  .bill-summary { width:100%; border-collapse:collapse; margin-top:8px; }
+  .bill-summary td { padding:4px 4px; font-size:13px; }
   .bill-summary td:last-child { text-align:right; font-weight:600; }
-  .bill-summary .bill-discount td { color:#c0392b; }
-  .bill-summary .bill-net td { border-top:2px dashed #333; padding-top:8px; font-size:15px; font-weight:700; }
+  .bill-summary .bill-discount td { color:#c0392b; border-bottom: 1.5px dashed #e74c3c; padding-bottom:6px; }
+  .bill-summary .bill-net td { border-top:2px solid #333; padding-top:8px; font-size:16px; font-weight:700; }
+  .bill-pay-row { border-top: 1px dashed #bbb; margin-top:8px; padding-top:6px; }
 
   .bill-pay-row { display:flex; justify-content:space-between; font-size:12.5px; color:#444; margin-top:6px; }
   .bill-footer { text-align:center; margin-top:14px; padding-top:10px; border-top:1px dashed #aaa; font-size:12px; color:#666; }
@@ -3027,7 +3055,14 @@ function printBill(orderId) {
   </div>`;
 
   document.getElementById('printBillArea').style.display = 'block';
-  setTimeout(() => { window.print(); document.getElementById('printBillArea').style.display = 'none'; }, 100);
+  // รอ render เสร็จแล้วค่อย print — ซ่อนหลัง dialog ปิด
+  setTimeout(() => {
+    window.print();
+    // ซ่อนบิลทั้งใน afterprint event และ timeout fallback
+    const hide = () => { document.getElementById('printBillArea').style.display = 'none'; };
+    window.addEventListener('afterprint', hide, { once: true });
+    setTimeout(hide, 3000); // fallback ถ้า afterprint ไม่ fire
+  }, 200);
 }
 
 // =========================================
