@@ -2470,6 +2470,21 @@ function openDeliveryModal(id) {
   selectedDeliveryId = id;
   // เก็บ originalQty ครั้งแรกที่เปิด modal
   order.items.forEach(i => { if (i.originalQty === undefined) i.originalQty = i.qty; });
+
+  // ===== คำนวณ adminDiscount ใหม่ทุกครั้งที่เปิด modal =====
+  // เพราะ adminDiscount ไม่ได้ถูก persist ลง GAS/memory ข้าม session
+  // ดึงจาก: (ยอดรวมสินค้าทั้งหมด) - (order.total ที่ admin set แล้ว)
+  // โดยต้องไม่นับ returnItems ที่ rider เพิ่มมา (ถ้ามี)
+  {
+    const rawItemsSum = order.items.reduce((s, i) => s + i.price * (i.originalQty !== undefined ? i.originalQty : i.qty), 0);
+    const returnSum = (order.returnItems || []).reduce((s, i) => s + i.price * i.qty, 0);
+    const implied = rawItemsSum - returnSum - order.total;
+    // ถ้า implied > 0 แสดงว่า admin เคยใส่ส่วนลด → ใช้ค่านี้
+    // ถ้า order.adminDiscount มีอยู่แล้ว (ตั้งในครั้งนี้) ให้ใช้ค่าที่ใหญ่กว่า
+    if (implied > 0.5) { // tolerance 0.5 บาท เผื่อ floating point
+      order.adminDiscount = Math.round(implied);
+    }
+  }
   document.getElementById('deliveryModalTitle').textContent = `📋 จัดการออเดอร์ ${order.id}`;
   document.getElementById('deliveryModalBody').innerHTML = `
     <div style="background:var(--primary-light);padding:10px 14px;border-radius:var(--radius-sm);margin-bottom:1rem;font-size:0.88rem;">
@@ -2545,23 +2560,32 @@ function openDeliveryModal(id) {
       </select>
     </div>
     <div style="background:var(--bg);padding:10px 12px;border-radius:var(--radius-sm);font-size:0.92rem;">
-      ${(order.adminDiscount||0) > 0 ? `
+      ${(() => {
+        const _iSum = order.items.reduce((s,i)=>s+i.price*Math.max(0,i.qty),0);
+        const _rSum = (order.returnItems||[]).reduce((s,i)=>s+i.price*i.qty,0);
+        const _disc = order.adminDiscount || 0;
+        const _net  = Math.max(0, _iSum - _rSum - _disc);
+        // อัปเดต order.total ให้ถูกต้องตอน render ด้วย
+        order.total = _net;
+        return `
         <div class="flex-between" style="color:var(--text-muted);font-size:0.85rem;">
           <span>ยอดสินค้า</span>
-          <span>฿${order.items.reduce((s,i)=>s+i.price*Math.max(0,i.qty),0).toLocaleString()}</span>
+          <span id="riderSumItems">฿${_iSum.toLocaleString()}</span>
         </div>
+        ${_disc > 0 ? `
         <div class="flex-between" style="color:var(--success);font-size:0.85rem;">
           <span>ส่วนลดจาก admin</span>
-          <span>- ฿${(order.adminDiscount||0).toLocaleString()}</span>
-        </div>` : ''}
-      ${(order.returnItems||[]).length > 0 ? `
+          <span id="riderSumDiscount">- ฿${_disc.toLocaleString()}</span>
+        </div>` : `<span id="riderSumDiscount" style="display:none"></span>`}
+        ${_rSum > 0 ? `
         <div class="flex-between" style="color:var(--danger);font-size:0.85rem;">
           <span>ยอดขนมคืน</span>
-          <span>- ฿${(order.returnItems||[]).reduce((s,i)=>s+i.price*i.qty,0).toLocaleString()}</span>
-        </div>` : ''}
-      <div class="flex-between" style="font-size:1.05rem;border-top:1px dashed var(--border);margin-top:6px;padding-top:6px;">
-        <span>ยอดรวม</span><strong class="text-primary" id="riderTotal">฿${order.total.toLocaleString()}</strong>
-      </div>
+          <span id="riderSumReturn">- ฿${_rSum.toLocaleString()}</span>
+        </div>` : `<span id="riderSumReturn" style="display:none"></span>`}
+        <div class="flex-between" style="font-size:1.05rem;border-top:1px dashed var(--border);margin-top:6px;padding-top:6px;">
+          <span>ยอดรวม</span><strong class="text-primary" id="riderTotal">฿${_net.toLocaleString()}</strong>
+        </div>`;
+      })()}
     </div>
   `;
   document.getElementById('deliveryModalFooter').innerHTML = `
@@ -2698,20 +2722,31 @@ function returnRiderItem(idx, orderId) {
 function recalcRiderTotal(orderId) {
   const order = DB.orders.find(o => o.id === orderId);
   if (!order) return;
-  // ยอดสินค้า (รวม extra, ลบ return)
+
+  // ยอดสินค้า: ใช้ qty ปัจจุบัน (rider อาจเพิ่ม/ลด/คืน)
   const itemsSum = order.items.reduce((s, i) => s + i.price * Math.max(0, i.qty), 0);
-  // ยอดขนมคืนนอกออเดอร์ (negative items)
+
+  // ยอดขนมคืนนอกออเดอร์ (rider เพิ่ม return items)
   const returnSum = (order.returnItems || []).reduce((s, i) => s + i.price * i.qty, 0);
-  // หักส่วนลดที่ admin เคยใส่ไว้ (เก็บไว้ใน order.adminDiscount)
+
+  // ส่วนลดที่ admin ใส่มา (ถูก derive ไว้ตอน openDeliveryModal แล้ว)
   const adminDiscount = order.adminDiscount || 0;
+
+  // ยอดสุทธิ = ยอดสินค้า - ขนมคืน - ส่วนลด admin
   const finalTotal = Math.max(0, itemsSum - returnSum - adminDiscount);
   order.total = finalTotal;
+
+  // อัปเดต UI
   const el = document.getElementById('riderTotal');
-  if (el) {
-    el.innerHTML = adminDiscount > 0
-      ? `฿${finalTotal.toLocaleString()} <small style="color:var(--success);font-size:0.75rem;">(ส่วนลด ฿${adminDiscount.toLocaleString()})</small>`
-      : '฿' + finalTotal.toLocaleString();
-  }
+  if (el) el.textContent = '฿' + finalTotal.toLocaleString();
+
+  // อัปเดต breakdown rows ถ้ามี
+  const elItems = document.getElementById('riderSumItems');
+  const elReturn = document.getElementById('riderSumReturn');
+  const elDiscount = document.getElementById('riderSumDiscount');
+  if (elItems) elItems.textContent = '฿' + itemsSum.toLocaleString();
+  if (elReturn) elReturn.textContent = '- ฿' + returnSum.toLocaleString();
+  if (elDiscount) elDiscount.textContent = '- ฿' + adminDiscount.toLocaleString();
 }
 
 function completeDelivery(id) {
@@ -3047,17 +3082,26 @@ function printBill(orderId) {
     ? `<img src="${logoSrc}" class="bill-logo" alt="logo">`
     : `<div class="bill-logo-emoji">🥐</div>`;
 
-  // คำนวณยอดสินค้ารวม (ก่อนส่วนลด)
+  // ยอดสินค้า: ใช้ qty ที่ส่งจริง (current qty)
   const validItems = order.items.filter(i => i.qty > 0);
   const itemsSubtotal = validItems.reduce((s, i) => s + (i.price * i.qty), 0);
 
-  // ค่าจัดส่ง (ปรับตรงนี้ได้)
+  // ยอดขนมคืนนอกออเดอร์
+  const returnItemsTotal = (order.returnItems || []).reduce((s, i) => s + i.price * i.qty, 0);
+
+  // ค่าจัดส่ง
   const deliveryFee = 0;
 
-  // ส่วนลด = ยอดก่อนลด - order.total (ที่ admin กำหนดไว้แล้ว)
+  // grossTotal = ยอดสินค้า + ค่าส่ง (ก่อนหักคืนและส่วนลด)
   const grossTotal = itemsSubtotal + deliveryFee;
-  const discount = Math.max(0, Math.round(grossTotal - (order.total || grossTotal)));
-  const netTotal = order.total || grossTotal;
+
+  // ส่วนลด admin (derive จาก order.adminDiscount หรือคำนวณกลับ)
+  let adminDiscount = order.adminDiscount || 0;
+  if (!adminDiscount && order.total < grossTotal - returnItemsTotal) {
+    adminDiscount = Math.round(grossTotal - returnItemsTotal - order.total);
+  }
+
+  const netTotal = Math.max(0, grossTotal - returnItemsTotal - adminDiscount);
 
   // แถวสินค้า
   const itemRowsHtml = validItems.map(i => `
@@ -3083,10 +3127,8 @@ function printBill(orderId) {
     </tr>`
   ).join('');
 
-  // ส่วนลด row
-  const discountRowHtml = discount > 0
-    ? `<tr class="bill-discount"><td colspan="3">ส่วนลด</td><td>- ฿${discount.toLocaleString()}</td></tr>`
-    : '';
+  // ส่วนลด row (แสดงในตารางรายการ - ลบออก ย้ายไปแสดงใน summary แทน)
+  const discountRowHtml = '';
 
   // วิธีรับของ
   const deliveryLabel = order.deliveryMethod === 'delivery' ? '🚚 ส่งบ้าน' : '🏪 รับเอง';
@@ -3144,7 +3186,8 @@ function printBill(orderId) {
         <td>รวม</td>
         <td>฿${grossTotal.toLocaleString()}</td>
       </tr>
-      ${discount > 0 ? `<tr class="bill-discount"><td>ส่วนลด</td><td>- ฿${discount.toLocaleString()}</td></tr>` : ''}
+      ${returnItemsTotal > 0 ? `<tr style="color:#c0392b;"><td>หักขนมคืน</td><td>- ฿${returnItemsTotal.toLocaleString()}</td></tr>` : ''}
+      ${adminDiscount > 0 ? `<tr class="bill-discount"><td>ส่วนลด</td><td>- ฿${adminDiscount.toLocaleString()}</td></tr>` : ''}
       <tr class="bill-net">
         <td>ยอดสุทธิ</td>
         <td>฿${netTotal.toLocaleString()}</td>
