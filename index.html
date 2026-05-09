@@ -218,16 +218,58 @@
   @media print {
     body * { visibility: hidden; }
     #printBillArea, #printBillArea * { visibility: visible; }
-    #printBillArea { position: fixed; inset: 0; padding: 20px; background: white; font-size: 13px; font-family: 'Sarabun', sans-serif; }
+    #printBillArea {
+      position: fixed; inset: 0;
+      background: white;
+      display: flex !important;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 20px;
+      font-family: 'Sarabun', sans-serif;
+    }
     .nav, .sidebar, .cart-fab, .btn, .modal-overlay { display: none !important; }
-    /* ตัด header/footer ของ browser ออก (ชื่อหน้า, URL, เวลา) */
-    @page { margin: 0; size: A4; }
+    @page { margin: 10mm; size: A5 portrait; }
+    .bill-items th, .bill-items td { font-size: 11.5px !important; }
+    .bill-info td { font-size: 12px !important; }
   }
+  /* ===== BILL PRINT STYLES ===== */
   #printBillArea { display: none; }
-  .bill-header { text-align:center; padding-bottom:10px; border-bottom:2px dashed #333; margin-bottom:12px; }
+  #printBillArea * { box-sizing: border-box; }
+  .bill-wrap { width:100%; max-width:560px; margin:0 auto; font-family:'Sarabun',sans-serif; font-size:13px; color:#1a1a1a; background:white; padding:20px; }
+  .bill-header { text-align:center; padding-bottom:12px; margin-bottom:14px; }
   .bill-logo { width:90px; height:90px; border-radius:50%; object-fit:cover; margin-bottom:8px; display:block; margin-left:auto; margin-right:auto; }
-  .bill-title { font-size:18px; font-weight:700; font-family:'Mitr',sans-serif; }
-  .bill-sub { font-size:12px; color:#555; margin-top:2px; }
+  .bill-logo-emoji { font-size:3.5rem; margin-bottom:6px; }
+  .bill-title { font-size:20px; font-weight:700; font-family:'Mitr',sans-serif; }
+  .bill-sub { font-size:11.5px; color:#555; margin-top:2px; }
+
+  /* Info rows */
+  .bill-info { width:100%; border-collapse:collapse; margin-bottom:14px; }
+  .bill-info td { padding:3px 0; font-size:13px; vertical-align:top; }
+  .bill-info td:first-child { color:#555; width:28%; white-space:nowrap; }
+  .bill-info td:nth-child(2) { width:4px; padding:3px 4px; color:#555; }
+  .bill-info td:last-child { font-weight:500; word-break:break-all; }
+  .bill-info .bill-id-val { font-weight:700; color:#1a1a1a; font-size:11.5px; }
+
+  /* Items table */
+  .bill-items { width:100%; border-collapse:collapse; margin:10px 0; }
+  .bill-items thead tr { border-top:1.5px solid #333; border-bottom:1.5px solid #333; }
+  .bill-items th { padding:5px 4px; font-size:12px; font-weight:700; text-align:center; }
+  .bill-items th:first-child { text-align:left; }
+  .bill-items tbody tr { border-bottom:0.5px solid #ddd; }
+  .bill-items td { padding:4px 4px; font-size:12.5px; vertical-align:middle; text-align:center; }
+  .bill-items td:first-child { text-align:left; }
+  .bill-items td:last-child { font-weight:700; text-align:right; }
+  .bill-items th:last-child { text-align:right; }
+
+  /* Summary */
+  .bill-summary { width:100%; border-collapse:collapse; margin-top:6px; }
+  .bill-summary td { padding:3px 4px; font-size:13px; }
+  .bill-summary td:last-child { text-align:right; font-weight:600; }
+  .bill-summary .bill-discount td { color:#c0392b; }
+  .bill-summary .bill-net td { border-top:2px dashed #333; padding-top:8px; font-size:15px; font-weight:700; }
+
+  .bill-pay-row { display:flex; justify-content:space-between; font-size:12.5px; color:#444; margin-top:6px; }
+  .bill-footer { text-align:center; margin-top:14px; padding-top:10px; border-top:1px dashed #aaa; font-size:12px; color:#666; }
   /* ✅ Reorder feature */
   .reorder-card { border:1.5px solid var(--border); border-radius:var(--radius-sm); padding:12px 14px; margin-bottom:10px; cursor:pointer; transition:all 0.2s; background:white; }
   .reorder-card:hover { border-color:var(--primary); background:var(--primary-light); }
@@ -236,8 +278,6 @@
   .reorder-items { font-size:0.85rem; color:var(--text); line-height:1.6; }
   .reorder-total { font-weight:700; color:var(--primary); font-size:1rem; margin-top:4px; }
   .bill-row { display:flex; justify-content:space-between; padding:3px 0; font-size:13px; }
-  .bill-total { display:flex; justify-content:space-between; padding:8px 0; font-size:16px; font-weight:700; border-top:2px dashed #333; margin-top:6px; }
-  .bill-footer { text-align:center; margin-top:12px; font-size:11px; color:#777; border-top:1px dashed #aaa; padding-top:8px; }
 
   /* OWNER CHART COLORS */
   .chart-bar { transition: opacity 0.2s; }
@@ -879,7 +919,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 // GAS API URL
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzw42Yn8sFVvQePGH8JxiJ6ek0CrOOnMAmSCQFkQVv2c8o4Z6zBNAr_GO0umfVDZWNf/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbywMKzEFP1WqgrQnhJHgqETJn9NaPkVE6IEe1FBs6wfEKrVynqUEe1Dm3Mt-R49gdX9/exec';
 
 // =========================================
 // HELPER: แปลง Date object/string เป็น YYYY-MM-DD โดยใช้ local timezone (ไม่ใช่ UTC)
@@ -2843,41 +2883,124 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // =========================================
-// ข้อ 2: PRINT BILL
+// ข้อ 2: PRINT BILL — ตาราง 4 คอลัมน์ พร้อมส่วนลด
 // =========================================
 function printBill(orderId) {
   const order = DB.orders.find(o => o.id === orderId);
   if (!order) return;
-  const deliveryFee = 0; // ส่งฟรี
+
   const payEl = document.getElementById('riderPayMethod_' + orderId);
   const payMethod = payEl ? payEl.value : (order.payMethod || 'cash');
   const payLabel = payMethod === 'cash' ? '💵 เงินสด' : '🏦 โอนเงิน';
   const now = new Date().toLocaleString('th-TH');
-  const itemsHtml = order.items.filter(i => i.qty > 0)
-    .map(i => `<div class="bill-row"><span>${i.name} ×${i.qty}</span><span>฿${(i.price*i.qty).toLocaleString()}</span></div>`).join('');
-  // ดึง URL ของ logo จาก shopLogo img ถ้ามี
+
+  // logo
   const logoSrc = document.getElementById('shopLogo')?.src || '';
   const logoHtml = logoSrc
     ? `<img src="${logoSrc}" class="bill-logo" alt="logo">`
-    : `<div style="font-size:3rem;margin-bottom:6px;">🥐</div>`;
+    : `<div class="bill-logo-emoji">🥐</div>`;
+
+  // คำนวณยอดสินค้ารวม (ก่อนส่วนลด)
+  const validItems = order.items.filter(i => i.qty > 0);
+  const itemsSubtotal = validItems.reduce((s, i) => s + (i.price * i.qty), 0);
+
+  // ค่าจัดส่ง (ตอนนี้ฟรี ปรับได้ที่นี่)
+  const deliveryFee = order.deliveryMethod === 'delivery' ? 0 : 0;
+
+  // ส่วนลด = ยอดสินค้า + ค่าส่ง - order.total (ค่าที่ admin set ไว้)
+  const grossTotal = itemsSubtotal + deliveryFee;
+  const discount = Math.max(0, grossTotal - (order.total || grossTotal));
+  const netTotal = order.total || grossTotal;
+
+  // แถวสินค้า
+  const itemRowsHtml = validItems.map(i => `
+    <tr>
+      <td>${i.name}</td>
+      <td>${i.qty}</td>
+      <td>฿${i.price.toLocaleString()}</td>
+      <td>฿${(i.price * i.qty).toLocaleString()}</td>
+    </tr>`).join('');
+
+  // แถวค่าจัดส่ง
+  const deliveryRowHtml = order.deliveryMethod === 'delivery'
+    ? `<tr><td>จัดส่งฟรี</td><td>-</td><td>-</td><td style="color:#27ae60;">ฟรี</td></tr>`
+    : '';
+
+  // ส่วนลด row
+  const discountRowHtml = discount > 0
+    ? `<tr class="bill-discount"><td colspan="3">ส่วนลด</td><td>- ฿${discount.toLocaleString()}</td></tr>`
+    : '';
+
+  // วิธีรับของ
+  const deliveryLabel = order.deliveryMethod === 'delivery' ? '🚚 ส่งบ้าน' : '🏪 รับเอง';
+
   document.getElementById('printBillArea').innerHTML = `
+  <div class="bill-wrap">
     <div class="bill-header">
       ${logoHtml}
       <div class="bill-title">ร้านแหม่มเบเกอรี่</div>
       <div class="bill-sub">จำหน่ายปลีก-ส่ง คู่ชาวทุ่งสง</div>
       <div class="bill-sub">วันที่: ${now}</div>
     </div>
-    <div class="bill-row"><span>เลขที่บิล</span><span>${order.id}</span></div>
-    <div class="bill-row"><span>ลูกค้า</span><span>${order.customer}</span></div>
-    <div class="bill-row"><span>โทร</span><span>${order.phone}</span></div>
-    ${order.address ? `<div class="bill-row"><span>ที่อยู่</span><span style="max-width:55%;text-align:right;">${order.address}</span></div>` : ''}
-    <hr style="border:none;border-top:1px dashed #aaa;margin:8px 0;">
-    ${itemsHtml}
-    ${deliveryFee > 0 ? `<div class="bill-row text-muted"><span>ค่าจัดส่ง</span><span>฿50</span></div>` : ''}
-    <div class="bill-total"><span>ยอดรวม</span><span>฿${order.total.toLocaleString()}</span></div>
-    <div class="bill-row"><span>ชำระโดย</span><span>${payLabel}</span></div>
-    <div class="bill-footer">ขอบคุณที่ใช้บริการ 🙏<br>แหม่มเบเกอรี่</div>
-  `;
+
+    <table class="bill-info">
+      <tr>
+        <td>เลขที่บิล</td><td>:</td>
+        <td><span class="bill-id-val">${order.id}</span></td>
+      </tr>
+      <tr>
+        <td>ลูกค้า</td><td>:</td>
+        <td>${order.customer || '-'}</td>
+      </tr>
+      <tr>
+        <td>โทร</td><td>:</td>
+        <td>${order.phone || '-'}</td>
+      </tr>
+      <tr>
+        <td>วิธีรับ</td><td>:</td>
+        <td>${deliveryLabel}</td>
+      </tr>
+      ${order.address ? `<tr><td>ที่อยู่</td><td>:</td><td>${order.address}</td></tr>` : ''}
+      ${order.deliveryDate ? `<tr><td>วันนัดส่ง</td><td>:</td><td>${order.deliveryDate.split('T')[0]}</td></tr>` : ''}
+    </table>
+
+    <table class="bill-items">
+      <thead>
+        <tr>
+          <th>รายการ</th>
+          <th style="text-align:center;">จำนวน</th>
+          <th style="text-align:center;">หน่วยละ</th>
+          <th style="text-align:right;">จำนวนเงิน</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${itemRowsHtml}
+        ${deliveryRowHtml}
+      </tbody>
+    </table>
+
+    <table class="bill-summary">
+      <tr>
+        <td>รวม</td>
+        <td>฿${grossTotal.toLocaleString()}</td>
+      </tr>
+      ${discount > 0 ? `<tr class="bill-discount"><td>ส่วนลด</td><td>- ฿${discount.toLocaleString()}</td></tr>` : ''}
+      <tr class="bill-net">
+        <td>ยอดสุทธิ</td>
+        <td>฿${netTotal.toLocaleString()}</td>
+      </tr>
+    </table>
+
+    <div class="bill-pay-row">
+      <span>ชำระโดย</span>
+      <span>${payLabel}</span>
+    </div>
+
+    <div class="bill-footer">
+      ขอบคุณที่ใช้บริการ 🙏<br>แหม่มเบเกอรี่
+    </div>
+  </div>`;
+
   document.getElementById('printBillArea').style.display = 'block';
   setTimeout(() => { window.print(); document.getElementById('printBillArea').style.display = 'none'; }, 100);
 }
