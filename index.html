@@ -2471,18 +2471,23 @@ function openDeliveryModal(id) {
   // เก็บ originalQty ครั้งแรกที่เปิด modal
   order.items.forEach(i => { if (i.originalQty === undefined) i.originalQty = i.qty; });
 
-  // ===== คำนวณ adminDiscount ใหม่ทุกครั้งที่เปิด modal =====
-  // เพราะ adminDiscount ไม่ได้ถูก persist ลง GAS/memory ข้าม session
-  // ดึงจาก: (ยอดรวมสินค้าทั้งหมด) - (order.total ที่ admin set แล้ว)
-  // โดยต้องไม่นับ returnItems ที่ rider เพิ่มมา (ถ้ามี)
+  // ===== คำนวณ adminDiscount ===================================
+  // เก็บ _originalTotal ครั้งเดียวตอนเปิด modal ครั้งแรกเท่านั้น
+  // (order.total อาจถูก recalcRiderTotal เปลี่ยนแล้วหลังจาก rider แก้รายการ)
+  if (order._originalTotal === undefined) {
+    order._originalTotal = order.total; // บันทึกยอดจาก Sheets (ที่ admin set ไว้)
+  }
   {
-    const rawItemsSum = order.items.reduce((s, i) => s + i.price * (i.originalQty !== undefined ? i.originalQty : i.qty), 0);
-    const returnSum = (order.returnItems || []).reduce((s, i) => s + i.price * i.qty, 0);
-    const implied = rawItemsSum - returnSum - order.total;
-    // ถ้า implied > 0 แสดงว่า admin เคยใส่ส่วนลด → ใช้ค่านี้
-    // ถ้า order.adminDiscount มีอยู่แล้ว (ตั้งในครั้งนี้) ให้ใช้ค่าที่ใหญ่กว่า
-    if (implied > 0.5) { // tolerance 0.5 บาท เผื่อ floating point
+    // rawItemsSum: ใช้ originalQty เท่านั้น (ไม่นับ extra ที่ rider เพิ่ม)
+    const rawItemsSum = order.items.reduce(
+      (s, i) => s + i.price * (i.originalQty || 0), 0
+    );
+    // implied discount = ยอดสินค้าเดิม - ยอดที่ admin set (หลังหักส่วนลดแล้ว)
+    const implied = rawItemsSum - order._originalTotal;
+    if (implied > 0.5) {
       order.adminDiscount = Math.round(implied);
+    } else {
+      order.adminDiscount = order.adminDiscount || 0;
     }
   }
   document.getElementById('deliveryModalTitle').textContent = `📋 จัดการออเดอร์ ${order.id}`;
