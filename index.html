@@ -845,9 +845,15 @@
       <button class="modal-close" onclick="closeModal('orderModal')">✕</button>
     </div>
     <div class="modal-body" id="orderModalBody"></div>
-    <div class="modal-footer">
-      <button class="btn btn-secondary" onclick="closeModal('orderModal')">ปิด</button>
-      <button class="btn btn-primary" id="orderStatusBtn" onclick="updateOrderStatus()">อัพเดทสถานะ</button>
+    <div class="modal-footer" style="justify-content:space-between;align-items:center;">
+      <button class="btn btn-secondary" onclick="printBill(currentOrderId)"
+        style="gap:6px;border-color:var(--text-muted);color:var(--text-muted);">
+        🖨️ พิมพ์บิล
+      </button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary" onclick="closeModal('orderModal')">ปิด</button>
+        <button class="btn btn-primary" id="orderStatusBtn" onclick="updateOrderStatus()">อัพเดทสถานะ</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1672,9 +1678,27 @@ function viewOrder(id) {
     <div class="divider"></div>
     <div class="form-label mb-1">รายการสินค้า</div>
     <div class="items-list">
-      ${order.items.map(i => `<div class="item-row"><span>${i.name}</span><span>${i.qty} × ฿${i.price} = <strong>฿${(i.qty*i.price).toLocaleString()}</strong></span></div>`).join('')}
-      ${order.deliveryMethod === 'delivery' ? `<div class="item-row text-muted"><span>จัดส่งฟรี</span><span>฿0</span></div>` : ''}
-      <div class="item-row" style="border-top:1px solid var(--border);padding-top:6px;font-weight:700;"><span>รวม</span><span class="text-primary">฿${order.total.toLocaleString()}</span></div>
+      <div class="item-row" style="font-size:0.8rem;color:var(--text-muted);padding-bottom:4px;border-bottom:1px solid var(--border);margin-bottom:4px;">
+        <span>รายการ</span>
+        <span style="text-align:right;">จำนวน × หน่วยละ = ยอด</span>
+      </div>
+      ${order.items.filter(i=>i.qty>0).map(i =>
+        `<div class="item-row">
+          <span>${i.name}</span>
+          <span style="text-align:right;">${i.qty} × ฿${i.price.toLocaleString()} = <strong class="text-primary">฿${(i.qty*i.price).toLocaleString()}</strong></span>
+        </div>`).join('')}
+      ${order.deliveryMethod === 'delivery' ? `<div class="item-row" style="color:var(--success);font-size:0.88rem;"><span>จัดส่งฟรี</span><span>฿0</span></div>` : ''}
+      <div class="item-row" style="border-top:2px dashed var(--border);padding-top:8px;margin-top:4px;font-weight:700;font-size:1rem;">
+        <span>รวม</span><span class="text-primary">฿${order.items.filter(i=>i.qty>0).reduce((s,i)=>s+(i.qty*i.price),0).toLocaleString()}</span>
+      </div>
+      ${(order.items.filter(i=>i.qty>0).reduce((s,i)=>s+(i.qty*i.price),0)) > order.total ?
+        `<div class="item-row" style="color:var(--danger);font-size:0.9rem;">
+          <span>ส่วนลด</span>
+          <span>- ฿${(order.items.filter(i=>i.qty>0).reduce((s,i)=>s+(i.qty*i.price),0) - order.total).toLocaleString()}</span>
+        </div>
+        <div class="item-row" style="font-weight:700;font-size:1.05rem;color:var(--primary);">
+          <span>ยอดสุทธิ</span><span>฿${order.total.toLocaleString()}</span>
+        </div>` : ''}
     </div>
     <div class="form-group">
       <div class="form-label">สถานะปัจจุบัน</div>
@@ -2889,14 +2913,15 @@ function printBill(orderId) {
   const order = DB.orders.find(o => o.id === orderId);
   if (!order) return;
 
-  const payEl = document.getElementById('riderPayMethod_' + orderId);
-  const payMethod = payEl ? payEl.value : (order.payMethod || 'cash');
+  // --- ดึง payMethod: ลอง rider dropdown ก่อน ถ้าไม่มีใช้ order.payMethod
+  const riderPayEl = document.getElementById('riderPayMethod_' + orderId);
+  const payMethod = riderPayEl ? riderPayEl.value : (order.payMethod || 'cash');
   const payLabel = payMethod === 'cash' ? '💵 เงินสด' : '🏦 โอนเงิน';
   const now = new Date().toLocaleString('th-TH');
 
   // logo
   const logoSrc = document.getElementById('shopLogo')?.src || '';
-  const logoHtml = logoSrc
+  const logoHtml = (logoSrc && !logoSrc.endsWith('undefined') && !logoSrc.endsWith('/'))
     ? `<img src="${logoSrc}" class="bill-logo" alt="logo">`
     : `<div class="bill-logo-emoji">🥐</div>`;
 
@@ -2904,12 +2929,12 @@ function printBill(orderId) {
   const validItems = order.items.filter(i => i.qty > 0);
   const itemsSubtotal = validItems.reduce((s, i) => s + (i.price * i.qty), 0);
 
-  // ค่าจัดส่ง (ตอนนี้ฟรี ปรับได้ที่นี่)
-  const deliveryFee = order.deliveryMethod === 'delivery' ? 0 : 0;
+  // ค่าจัดส่ง (ปรับตรงนี้ได้)
+  const deliveryFee = 0;
 
-  // ส่วนลด = ยอดสินค้า + ค่าส่ง - order.total (ค่าที่ admin set ไว้)
+  // ส่วนลด = ยอดก่อนลด - order.total (ที่ admin กำหนดไว้แล้ว)
   const grossTotal = itemsSubtotal + deliveryFee;
-  const discount = Math.max(0, grossTotal - (order.total || grossTotal));
+  const discount = Math.max(0, Math.round(grossTotal - (order.total || grossTotal)));
   const netTotal = order.total || grossTotal;
 
   // แถวสินค้า
