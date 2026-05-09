@@ -1809,7 +1809,10 @@ function updateOrderStatus() {
   }
 
   order.status = status;
-  if (discountAmt > 0) order.total = newTotal;
+  if (discountAmt > 0) {
+    order.adminDiscount = (order.adminDiscount || 0) + discountAmt; // สะสมส่วนลด (กรณีอัปเดตซ้ำ)
+    order.total = newTotal;
+  }
 
   closeModal('orderModal');
   renderOrders();
@@ -2504,6 +2507,35 @@ function openDeliveryModal(id) {
         <button class="btn btn-primary btn-sm" onclick="addExtraItem('${id}')">เพิ่ม</button>
       </div>
     </div>
+    <div style="margin-top:0.75rem;">
+      <p class="form-label">➖ คืนสินค้านอกออเดอร์</p>
+      <div id="returnItemsEdit">
+        ${(order.returnItems||[]).map((item, idx) => `
+          <div class="flex-between" style="padding:6px 0;border-bottom:1px solid var(--border);" id="returnItem_${idx}">
+            <div style="flex:1;font-size:0.88rem;color:var(--danger);">
+              <div>↩ ${item.name}</div>
+              <div style="color:var(--text-muted);font-size:0.78rem;">คืน ฿${item.price}/ชิ้น</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <button class="qty-btn" onclick="adjustReturnItem(${idx}, -1, '${id}')">−</button>
+              <span id="returnQty_${idx}" class="fw-bold" style="min-width:28px;text-align:center;">${item.qty}</span>
+              <button class="qty-btn" onclick="adjustReturnItem(${idx}, 1, '${id}')">+</button>
+              <button class="btn btn-sm btn-danger" style="padding:3px 8px;font-size:0.78rem;" onclick="removeReturnItem(${idx}, '${id}')">ลบ</button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">
+        <select class="form-control" id="returnProductSelect" style="flex:2;min-width:160px;font-size:0.85rem;">
+          <option value="">-- เลือกสินค้าที่คืน --</option>
+          ${DB.products.map(p =>
+            `<option value="${p.id}" data-price="${p.price}" data-name="${p.name}">${p.name} (฿${p.price})</option>`
+          ).join('')}
+        </select>
+        <input type="number" id="returnQtyInput" class="form-control" value="1" min="1" style="width:64px;flex:none;">
+        <button class="btn btn-sm" style="background:var(--danger);color:white;" onclick="addReturnItem('${id}')">คืน</button>
+      </div>
+    </div>
     <div class="divider"></div>
     <div class="form-group">
       <label class="form-label">💳 วิธีชำระเงิน</label>
@@ -2512,8 +2544,24 @@ function openDeliveryModal(id) {
         <option value="transfer" ${order.payMethod==='transfer'?'selected':''}>🏦 โอนเงิน</option>
       </select>
     </div>
-    <div class="flex-between" style="background:var(--bg);padding:12px;border-radius:var(--radius-sm);font-size:1.05rem;">
-      <span>ยอดรวม</span><strong class="text-primary" id="riderTotal">฿${order.total.toLocaleString()}</strong>
+    <div style="background:var(--bg);padding:10px 12px;border-radius:var(--radius-sm);font-size:0.92rem;">
+      ${(order.adminDiscount||0) > 0 ? `
+        <div class="flex-between" style="color:var(--text-muted);font-size:0.85rem;">
+          <span>ยอดสินค้า</span>
+          <span>฿${order.items.reduce((s,i)=>s+i.price*Math.max(0,i.qty),0).toLocaleString()}</span>
+        </div>
+        <div class="flex-between" style="color:var(--success);font-size:0.85rem;">
+          <span>ส่วนลดจาก admin</span>
+          <span>- ฿${(order.adminDiscount||0).toLocaleString()}</span>
+        </div>` : ''}
+      ${(order.returnItems||[]).length > 0 ? `
+        <div class="flex-between" style="color:var(--danger);font-size:0.85rem;">
+          <span>ยอดขนมคืน</span>
+          <span>- ฿${(order.returnItems||[]).reduce((s,i)=>s+i.price*i.qty,0).toLocaleString()}</span>
+        </div>` : ''}
+      <div class="flex-between" style="font-size:1.05rem;border-top:1px dashed var(--border);margin-top:6px;padding-top:6px;">
+        <span>ยอดรวม</span><strong class="text-primary" id="riderTotal">฿${order.total.toLocaleString()}</strong>
+      </div>
     </div>
   `;
   document.getElementById('deliveryModalFooter').innerHTML = `
@@ -2544,6 +2592,45 @@ function addExtraItem(orderId) {
   openDeliveryModal(orderId); // re-render modal
 }
 
+// ===== คืนสินค้านอกออเดอร์ =====
+function addReturnItem(orderId) {
+  const order = DB.orders.find(o => o.id === orderId);
+  const sel = document.getElementById('returnProductSelect');
+  const qtyInput = document.getElementById('returnQtyInput');
+  if (!sel.value || !order) { showToast('กรุณาเลือกสินค้าที่คืน', 'error'); return; }
+  const opt = sel.options[sel.selectedIndex];
+  const price = parseFloat(opt.dataset.price) || 0;
+  const name = opt.dataset.name;
+  const qty = parseInt(qtyInput.value) || 1;
+  if (!order.returnItems) order.returnItems = [];
+  // ถ้ามีรายการคืนนี้อยู่แล้ว ให้บวกจำนวน
+  const existing = order.returnItems.findIndex(i => i.id === sel.value);
+  if (existing !== -1) {
+    order.returnItems[existing].qty += qty;
+  } else {
+    order.returnItems.push({ id: sel.value, name, price, qty });
+  }
+  recalcRiderTotal(orderId);
+  openDeliveryModal(orderId); // re-render modal
+}
+
+function adjustReturnItem(idx, delta, orderId) {
+  const order = DB.orders.find(o => o.id === orderId);
+  if (!order || !order.returnItems) return;
+  order.returnItems[idx].qty = Math.max(1, order.returnItems[idx].qty + delta);
+  const el = document.getElementById('returnQty_' + idx);
+  if (el) el.textContent = order.returnItems[idx].qty;
+  recalcRiderTotal(orderId);
+}
+
+function removeReturnItem(idx, orderId) {
+  const order = DB.orders.find(o => o.id === orderId);
+  if (!order || !order.returnItems) return;
+  order.returnItems.splice(idx, 1);
+  recalcRiderTotal(orderId);
+  openDeliveryModal(orderId);
+}
+
 function confirmDelivery(id) {
   const order = DB.orders.find(o => o.id === id);
   if (!order) return;
@@ -2570,7 +2657,10 @@ function confirmDelivery(id) {
     status: 'delivered',
     riderId: currentUser?.username || '',
     paymentMethod: payMethod,
+    newTotal: order.total,           // ยอดสุทธิหลังหักส่วนลด + หักขนมคืน
+    adminDiscount: order.adminDiscount || 0,
     deliveryItems: JSON.stringify(deliveryItems),
+    returnItems: JSON.stringify(order.returnItems || []),
   });
   fetch(`${GAS_URL}?${params}`)
     .then(r => r.json())
@@ -2608,10 +2698,20 @@ function returnRiderItem(idx, orderId) {
 function recalcRiderTotal(orderId) {
   const order = DB.orders.find(o => o.id === orderId);
   if (!order) return;
-  const total = order.items.reduce((s, i) => s + i.price * i.qty, 0);
-  order.total = total;
+  // ยอดสินค้า (รวม extra, ลบ return)
+  const itemsSum = order.items.reduce((s, i) => s + i.price * Math.max(0, i.qty), 0);
+  // ยอดขนมคืนนอกออเดอร์ (negative items)
+  const returnSum = (order.returnItems || []).reduce((s, i) => s + i.price * i.qty, 0);
+  // หักส่วนลดที่ admin เคยใส่ไว้ (เก็บไว้ใน order.adminDiscount)
+  const adminDiscount = order.adminDiscount || 0;
+  const finalTotal = Math.max(0, itemsSum - returnSum - adminDiscount);
+  order.total = finalTotal;
   const el = document.getElementById('riderTotal');
-  if (el) el.textContent = '฿' + total.toLocaleString();
+  if (el) {
+    el.innerHTML = adminDiscount > 0
+      ? `฿${finalTotal.toLocaleString()} <small style="color:var(--success);font-size:0.75rem;">(ส่วนลด ฿${adminDiscount.toLocaleString()})</small>`
+      : '฿' + finalTotal.toLocaleString();
+  }
 }
 
 function completeDelivery(id) {
@@ -2973,6 +3073,16 @@ function printBill(orderId) {
     ? `<tr><td>จัดส่งฟรี</td><td>-</td><td>-</td><td style="color:#27ae60;">ฟรี</td></tr>`
     : '';
 
+  // แถวขนมคืนนอกออเดอร์
+  const returnRowsHtml = (order.returnItems || []).map(i =>
+    `<tr style="color:#c0392b;">
+      <td>↩ คืน: ${i.name}</td>
+      <td>${i.qty}</td>
+      <td>฿${i.price.toLocaleString()}</td>
+      <td>- ฿${(i.price * i.qty).toLocaleString()}</td>
+    </tr>`
+  ).join('');
+
   // ส่วนลด row
   const discountRowHtml = discount > 0
     ? `<tr class="bill-discount"><td colspan="3">ส่วนลด</td><td>- ฿${discount.toLocaleString()}</td></tr>`
@@ -3025,6 +3135,7 @@ function printBill(orderId) {
       <tbody>
         ${itemRowsHtml}
         ${deliveryRowHtml}
+        ${returnRowsHtml}
       </tbody>
     </table>
 
