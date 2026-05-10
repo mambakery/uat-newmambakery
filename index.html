@@ -968,7 +968,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 // GAS API URL
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyYLKxWLuIA1cWfAuBvudYq7FH2Zec_LG0-3vL_XQvuQP_ge13xp-GWFrrdMIkerBYm/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyh4Ft8qmfU1-8c8RlAHPDf8mmFYElNRl2v3Gm_ekA-PD9pcFt3WiXLRgdVkWl_BzaU/exec';
 
 // =========================================
 // HELPER: แปลง Date object/string เป็น YYYY-MM-DD โดยใช้ local timezone (ไม่ใช่ UTC)
@@ -1642,61 +1642,19 @@ function loadOrders() {
     .catch(err => showToast('โหลดออเดอร์ล้มเหลว', 'error'));
 }
 
-// โหลดข้อมูลสำหรับ "สรุปออเดอร์" — fetch พร้อม includeDelivery=true
+// โหลดข้อมูลสำหรับ "สรุปออเดอร์"
+// ใช้ loadOrders() เดิม (proven) — callback จะเรียก renderOrderSummary อัตโนมัติ
+// ถ้ามีข้อมูลใน DB.orders แล้ว render ทันที ไม่ต้องรอ fetch ใหม่
 function loadOrdersForSummary() {
   if (!currentUser?.token) return;
-  const url = `${GAS_URL}?action=getOrders&token=${encodeURIComponent(currentUser.token)}&includeDelivery=true`;
-  showToast('🔄 กำลังโหลดข้อมูล...', 'info');
-  fetch(url)
-    .then(r => r.json())
-    .then(data => {
-      if (data.error) { showToast('โหลดไม่สำเร็จ: ' + data.error, 'error'); return; }
-      // merge เข้า DB.orders (อัปเดต deliveryItems + returnItems)
-      data.forEach(o => {
-        const existing = DB.orders.find(x => x.id === o.id);
-        const mapped = {
-          id: o.id,
-          customer: o.customerName,
-          phone: o.customerPhone,
-          total: parseFloat(o.total) || 0,
-          adminDiscount: parseFloat(o.adminDiscount) || 0,
-          deliveryItems: Array.isArray(o.deliveryItems) ? o.deliveryItems : null,
-          returnItems: Array.isArray(o.returnItems) ? o.returnItems : [],
-          status: normalizeStatus(o.status),
-          payMethod: normalizePayMethod(o.paymentMethod),
-          deliveryDate: (() => {
-            const d = o.deliveryDate;
-            if (!d) return '';
-            if (typeof d === 'string') return d.split('T')[0];
-            try { return toLocalDateStr(d); } catch(e) { return String(d); }
-          })(),
-          deliveryMethod: o.deliveryMethod,
-          address: o.address,
-          note: o.note,
-          riderId: o.riderId || '',
-          deliveredAt: o.completedAt || '',
-          slipUrl: o.slipUrl || '',
-          riderNote: o.riderNote || '',
-          items: Array.isArray(o.items) ? o.items.map(i => ({
-            id: i.productId || i.id,
-            name: i.productName || i.name,
-            qty: parseInt(i.quantity || i.qty) || 0,
-            originalQty: parseInt(i.quantity || i.qty) || 0,
-            price: parseFloat(i.unitPrice || i.price) || 0,
-          })) : [],
-        };
-        if (existing) {
-          Object.assign(existing, mapped);
-        } else {
-          DB.orders.push(mapped);
-        }
-      });
-      renderOrderSummary();
-    })
-    .catch(err => {
-      console.error('loadOrdersForSummary error:', err);
-      showToast('โหลดไม่สำเร็จ — ลองใหม่อีกครั้ง', 'error');
-    });
+  if (DB.orders.length > 0) {
+    // มีข้อมูลแล้ว render ได้เลย แล้วค่อย refresh background
+    renderOrderSummary();
+    loadOrders(); // refresh อยู่เบื้องหลัง
+  } else {
+    // ยังไม่มีข้อมูล — โหลดก่อน
+    loadOrders();
+  }
 }
 
 function renderOrders() {
