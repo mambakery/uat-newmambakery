@@ -574,7 +574,7 @@
 <!-- ===== PAGE: ADMIN ===== -->
 <div id="page-admin" class="page">
   <nav class="nav">
-    <div class="nav-brand">🥐 Back office</div>
+    <div class="nav-brand">🥐 Backoffice</div>
     <div style="display:flex;align-items:center;gap:8px;">
       <span style="font-size:0.85rem;color:var(--text-muted);" id="adminUserLabel"></span>
       <button class="btn btn-secondary btn-sm" onclick="refreshAdmin()" title="โหลดข้อมูลใหม่">🔄 Refresh</button>
@@ -584,7 +584,7 @@
   <div class="admin-layout">
     <!-- Sidebar -->
     <div class="sidebar">
-      <div class="sidebar-logo">🥐 Back office</div>
+      <div class="sidebar-logo">🥐 Backoffice</div>
       <ul class="sidebar-nav">
         <li><a href="#" class="active" onclick="adminTab('dashboard', this)">📊 Dashboard</a></li>
         <li><a href="#" onclick="adminTab('orders', this)">📋 จัดการออเดอร์</a></li>
@@ -751,9 +751,11 @@
           <h2 class="section-title">📑 สรุปออเดอร์</h2>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
             <select class="form-control" id="summaryStatusFilter" style="width:auto;" onchange="renderOrderSummary()">
-              <option value="">ทุกสถานะ</option>
-              <option value="delivered" selected>ส่งแล้ว</option>
+              <option value="" selected>ทุกสถานะ</option>
+              <option value="delivered">ส่งแล้ว</option>
               <option value="paid">ชำระแล้ว</option>
+              <option value="ready">พร้อมส่ง</option>
+              <option value="production">กำลังผลิต</option>
             </select>
             <input type="date" class="form-control" id="summaryDateFilter" style="width:auto;" onchange="renderOrderSummary()">
             <button class="btn btn-secondary btn-sm" onclick="document.getElementById('summaryDateFilter').value='';renderOrderSummary()">ล้าง</button>
@@ -965,7 +967,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 // GAS API URL
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxuNQopolI_wmXCEpXdrw7MyEdq8cnue4XTsxU-6lPE4uSLIA-QI6o1w0hSBEcEUaE0/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyopxcXWQvyWDq2GQvWXra67KUdJZ7T3sl6ILRTYTZVwAZtqrzenCuLWY1KBHzr8hZd/exec';
 
 // =========================================
 // HELPER: แปลง Date object/string เป็น YYYY-MM-DD โดยใช้ local timezone (ไม่ใช่ UTC)
@@ -1413,7 +1415,7 @@ function adminTab(tab, el) {
   if (tab === 'delivery-assign') { renderAssign(); renderAssignHistory(); }
   if (tab === 'payments') loadOrdersForPayments();
   if (tab === 'reports') renderReport();
-  if (tab === 'order-summary') renderOrderSummary();
+  if (tab === 'order-summary') loadOrdersForSummary();
   return false;
 }
 
@@ -1629,8 +1631,60 @@ function loadOrders() {
       }));
       renderOrders();
       renderAdminDashboard();
+      // ถ้า summary tab กำลังแสดงอยู่ ให้ render ด้วย
+      const summaryTab = document.getElementById('admin-order-summary');
+      if (summaryTab && !summaryTab.classList.contains('hidden')) {
+        renderOrderSummary();
+      }
     })
     .catch(err => showToast('โหลดออเดอร์ล้มเหลว', 'error'));
+}
+
+// โหลดข้อมูลสำหรับ "สรุปออเดอร์" โดยเฉพาะ
+function loadOrdersForSummary() {
+  if (!currentUser?.token) return;
+  showToast('🔄 กำลังโหลดข้อมูล...', 'info');
+  const url = `${GAS_URL}?action=getOrders&token=${encodeURIComponent(currentUser.token)}`;
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      if (data.error) { showToast('โหลดออเดอร์ไม่สำเร็จ: ' + data.error, 'error'); return; }
+      DB.orders = data.map(o => ({
+        id: o.id,
+        customer: o.customerName,
+        phone: o.customerPhone,
+        total: parseFloat(o.total) || 0,
+        adminDiscount: parseFloat(o.adminDiscount) || 0,
+        deliveryItems: Array.isArray(o.deliveryItems) ? o.deliveryItems : null,
+        returnItems: Array.isArray(o.returnItems) ? o.returnItems : [],
+        status: normalizeStatus(o.status),
+        payMethod: normalizePayMethod(o.paymentMethod),
+        deliveryDate: (() => {
+          const d = o.deliveryDate;
+          if (!d) return '';
+          if (typeof d === 'string') return d.split('T')[0];
+          try { return toLocalDateStr(d); } catch(e) { return String(d); }
+        })(),
+        deliveryMethod: o.deliveryMethod,
+        address: o.address,
+        note: o.note,
+        createdAt: o.createdAt,
+        riderId: o.riderId || '',
+        riderName: o.riderName || o.riderId || '',
+        deliveredAt: o.completedAt || o.deliveredAt || '',
+        slipUrl: o.slipUrl || '',
+        riderNote: o.riderNote || '',
+        items: Array.isArray(o.items) ? o.items.map(i => ({
+          id: i.productId || i.id,
+          name: i.productName || i.name,
+          qty: parseInt(i.quantity || i.qty) || 0,
+          originalQty: parseInt(i.quantity || i.qty) || 0,
+          price: parseFloat(i.unitPrice || i.price) || 0,
+        })) : [],
+      }));
+      renderOrderSummary();
+    })
+    .catch(() => showToast('โหลดข้อมูลไม่สำเร็จ', 'error'));
 }
 
 function renderOrders() {
