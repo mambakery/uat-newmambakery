@@ -574,7 +574,7 @@
 <!-- ===== PAGE: ADMIN ===== -->
 <div id="page-admin" class="page">
   <nav class="nav">
-    <div class="nav-brand">🥐 Backoffice</div>
+    <div class="nav-brand">🥐 Back office</div>
     <div style="display:flex;align-items:center;gap:8px;">
       <span style="font-size:0.85rem;color:var(--text-muted);" id="adminUserLabel"></span>
       <button class="btn btn-secondary btn-sm" onclick="refreshAdmin()" title="โหลดข้อมูลใหม่">🔄 Refresh</button>
@@ -584,7 +584,7 @@
   <div class="admin-layout">
     <!-- Sidebar -->
     <div class="sidebar">
-      <div class="sidebar-logo">🥐 Backoffice</div>
+      <div class="sidebar-logo">🥐 Back office</div>
       <ul class="sidebar-nav">
         <li><a href="#" class="active" onclick="adminTab('dashboard', this)">📊 Dashboard</a></li>
         <li><a href="#" onclick="adminTab('orders', this)">📋 จัดการออเดอร์</a></li>
@@ -965,7 +965,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 // GAS API URL
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzVNbHMpNjONFsx3T6TBHcu28JCHjSMjvj-VYQ0AVO0QZ_SphOVdaICcTl82YeljqMG/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxuNQopolI_wmXCEpXdrw7MyEdq8cnue4XTsxU-6lPE4uSLIA-QI6o1w0hSBEcEUaE0/exec/exec';
 
 // =========================================
 // HELPER: แปลง Date object/string เป็น YYYY-MM-DD โดยใช้ local timezone (ไม่ใช่ UTC)
@@ -2718,19 +2718,34 @@ function renderOrderSummary() {
     const origTotal = origSum - adminDisc;  // ยอดที่ admin ตั้งไว้
 
     // --- Final delivery items (DELIVERY_ITEMS sheet — ที่ rider ส่งจริง) ---
+    // ใช้ deliveryItems เสมอเมื่อมีข้อมูล (ไม่ fallback ไป original items)
     const hasFinalItems = order.deliveryItems && order.deliveryItems.length > 0;
     const finalItems = hasFinalItems
       ? order.deliveryItems.filter(i => i.qty > 0)
-      : order.items.filter(i => i.qty > 0);  // fallback ถ้า GAS เก่ายังไม่มี deliveryItems
+      : [];  // ถ้ายังไม่มี deliveryItems แสดง "รอข้อมูล"
     const finalSum   = finalItems.reduce((s, i) => s + i.price * i.qty, 0);
     const returnItems= order.returnItems || [];
     const returnSum  = returnItems.reduce((s, i) => s + i.price * i.qty, 0);
     const finalNet   = order.total;
 
-    const hasChange  = hasFinalItems && (Math.abs(origSum - finalSum) > 0.5 || returnSum > 0 || adminDisc > 0);
-    const diffBadge  = hasChange
-      ? `<span style="background:#fff3cd;color:#856404;font-size:11px;padding:2px 8px;border-radius:999px;margin-left:6px;">มีการแก้ไข</span>`
-      : `<span style="background:#d1fae5;color:#065f46;font-size:11px;padding:2px 8px;border-radius:999px;margin-left:6px;">ตรงกัน</span>`;
+    // Badge: เปรียบเทียบรายการจริงที่ส่ง vs รายการที่ลูกค้าสั่ง
+    let diffBadge;
+    if (!hasFinalItems) {
+      diffBadge = `<span style="background:#f3f4f6;color:#6b7280;font-size:11px;padding:2px 8px;border-radius:999px;margin-left:6px;">⏳ รอข้อมูลการส่ง</span>`;
+    } else {
+      // ตรวจสอบว่ามีการเปลี่ยนแปลงจริงหรือไม่
+      const deliveredQtyMap = {};
+      finalItems.forEach(i => { if (!i.isExtra) deliveredQtyMap[i.id] = (deliveredQtyMap[i.id]||0) + i.qty; });
+      const origQtyMap = {};
+      origItems.forEach(i => { origQtyMap[i.id] = (i.originalQty || i.qty); });
+      const hasExtraItems = finalItems.some(i => i.isExtra);
+      const hasQtyChange  = Object.keys(origQtyMap).some(id => origQtyMap[id] !== (deliveredQtyMap[id]||0));
+      const hasReturns    = returnSum > 0;
+      const realChange    = hasExtraItems || hasQtyChange || hasReturns;
+      diffBadge = realChange
+        ? `<span style="background:#fff3cd;color:#856404;font-size:11px;padding:2px 8px;border-radius:999px;margin-left:6px;">🔄 มีการแก้ไข</span>`
+        : `<span style="background:#d1fae5;color:#065f46;font-size:11px;padding:2px 8px;border-radius:999px;margin-left:6px;">✅ ตรงกัน</span>`;
+    }
 
     return `
     <div class="card" style="margin-bottom:1rem;">
@@ -2777,23 +2792,34 @@ function renderOrderSummary() {
             <span>✅ บิลสุดท้าย (หลังส่งจริง)</span>
             <button class="btn btn-secondary btn-sm" style="font-size:0.78rem;padding:3px 10px;" onclick="printFinalBill('${order.id}')">🖨️ พิมพ์</button>
           </div>
-          ${!hasFinalItems ? '<div style="font-size:11px;color:var(--text-muted);margin-bottom:6px;">⚠️ ยังไม่มีข้อมูลการส่ง (Deploy GAS ใหม่เพื่อโหลด DELIVERY_ITEMS)</div>' : ''}
+          ${!hasFinalItems ? `
+            <div style="text-align:center;padding:2rem 1rem;color:var(--text-muted);font-size:12px;">
+              <div style="font-size:1.5rem;margin-bottom:6px;">⏳</div>
+              <div>ยังไม่มีข้อมูลการส่งของ</div>
+              <div style="font-size:11px;margin-top:4px;">ออเดอร์นี้ยังไม่ได้ส่ง หรือต้อง Deploy GAS ใหม่</div>
+            </div>
+          ` : `
           <table style="width:100%;font-size:12px;border-collapse:collapse;">
             <tr style="color:var(--text-muted);border-bottom:1px solid var(--border);">
-              <th style="text-align:left;padding:3px 0;">รายการ</th><th style="text-align:center;">จำนวน</th><th style="text-align:right;">ยอด</th>
+              <th style="text-align:left;padding:3px 0;">รายการ</th>
+              <th style="text-align:center;padding:3px 2px;">จำนวน</th>
+              <th style="text-align:right;">ยอด</th>
             </tr>
             ${finalItems.map(i => `
-              <tr style="border-bottom:0.5px solid var(--border);">
-                <td style="padding:3px 0;font-size:11.5px;">${i.isExtra ? '➕ ' : ''}${i.name}</td>
+              <tr style="border-bottom:0.5px solid var(--border);${i.isExtra ? 'background:#f0fdf4;' : ''}">
+                <td style="padding:3px 0;font-size:11.5px;">
+                  ${i.isExtra ? '<span style="color:#16a34a;font-size:10px;">➕ เพิ่ม </span>' : ''}${i.name}
+                </td>
                 <td style="text-align:center;">${i.qty}</td>
                 <td style="text-align:right;font-weight:600;">฿${(i.price*i.qty).toLocaleString()}</td>
               </tr>`).join('')}
             ${returnItems.map(i => `
-              <tr style="color:var(--danger);border-bottom:0.5px solid var(--border);">
+              <tr style="color:var(--danger);border-bottom:0.5px solid var(--border);background:#fff5f5;">
                 <td style="padding:3px 0;font-size:11px;">↩ คืน: ${i.name}</td>
                 <td style="text-align:center;">${i.qty}</td>
                 <td style="text-align:right;">-฿${(i.price*i.qty).toLocaleString()}</td>
               </tr>`).join('')}
+            ${order.deliveryMethod === 'delivery' ? '<tr><td colspan="2" style="font-size:11px;color:var(--success);">จัดส่งฟรี</td><td style="text-align:right;color:var(--success);">ฟรี</td></tr>' : ''}
             <tr style="border-top:1px solid var(--border);">
               <td colspan="2" style="padding-top:4px;font-size:11.5px;">รวม</td>
               <td style="text-align:right;padding-top:4px;">฿${finalSum.toLocaleString()}</td>
@@ -2802,6 +2828,7 @@ function renderOrderSummary() {
             ${adminDisc > 0 ? `<tr><td colspan="2" style="color:var(--danger);font-size:11.5px;">ส่วนลด admin</td><td style="text-align:right;color:var(--danger);">-฿${adminDisc.toLocaleString()}</td></tr>` : ''}
             <tr><td colspan="2" style="font-weight:700;">ยอดสุทธิ</td><td style="text-align:right;font-weight:700;color:var(--success);">฿${finalNet.toLocaleString()}</td></tr>
           </table>
+          `}
         </div>
 
       </div>
@@ -3298,9 +3325,9 @@ function printFinalBill(orderId) {
   const order = DB.orders.find(o => o.id === orderId);
   if (!order) return;
 
-  // ถ้า GAS ยังไม่ได้ deploy ใหม่ (ไม่มี deliveryItems) ใช้ printBill เดิม
+  // ถ้ายังไม่มี deliveryItems แสดง toast แจ้งเตือน
   if (!order.deliveryItems || !order.deliveryItems.length) {
-    printBill(orderId);
+    showToast('⏳ ยังไม่มีข้อมูลการส่งของ — ต้อง Deploy GAS ใหม่', 'error');
     return;
   }
 
