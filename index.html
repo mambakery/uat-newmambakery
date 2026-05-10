@@ -947,7 +947,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 // GAS API URL
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyopxcXWQvyWDq2GQvWXra67KUdJZ7T3sl6ILRTYTZVwAZtqrzenCuLWY1KBHzr8hZd/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycby0eWur40EaLE5kZOumvENyEq3Cgc74oDYBj0lAkn2v7ApC_548htGrGq53rlnh62dB/exec';
 
 // =========================================
 // HELPER: แปลง Date object/string เป็น YYYY-MM-DD โดยใช้ local timezone (ไม่ใช่ UTC)
@@ -3233,6 +3233,7 @@ function completeDeliveryWithPayment(orderId) {
   order.deliveredBy = currentUser?.username || '';
   order.deliveredAt = new Date().toLocaleString('th-TH');
 
+  // ส่ง items ที่ rider แก้ไข (ถ้ามี) + returnItems นอกออเดอร์
   const deliveryItems = order.items.map(i => ({
     id: i.id, name: i.name, price: i.price,
     originalQty: i.originalQty || i.qty || 0,
@@ -3240,6 +3241,10 @@ function completeDeliveryWithPayment(orderId) {
     returnedQty: Math.max(0, (i.originalQty || 0) - i.qty),
     isExtra: i.isExtra || false,
   }));
+
+  // ===== สำคัญ: ส่ง newTotal เสมอ เพื่อป้องกัน GAS เขียนทับด้วย totalDelivered =====
+  // order.total ณ จุดนี้คือยอดที่ถูกต้องอยู่แล้ว (รวมส่วนลด admin ที่ load มาจาก Sheets)
+  const finalTotal = order.total;
 
   const label = payMethod === 'cash' ? '💵 เงินสด' : '🏦 โอนเงิน';
   const params = new URLSearchParams({
@@ -3249,12 +3254,15 @@ function completeDeliveryWithPayment(orderId) {
     status: 'delivered',
     riderId: currentUser?.username || '',
     paymentMethod: payMethod,
+    newTotal: finalTotal,                              // ✅ ป้องกัน GAS เขียนทับ
+    adminDiscount: order.adminDiscount || 0,
     deliveryItems: JSON.stringify(deliveryItems),
+    returnItems: JSON.stringify(order.returnItems || []),
   });
   fetch(`${GAS_URL}?${params}`)
     .then(r => r.json())
     .then(res => {
-      if (res.success) showToast(`✅ ส่งสำเร็จ — ${label} | รอ Admin ยืนยัน`, 'success');
+      if (res.success) showToast(`✅ ส่งสำเร็จ — ${label}`, 'success');
       else { order.status = 'ready'; renderRiderPage(); showToast(`⚠️ บันทึกไม่สำเร็จ: ${res.error}`, 'error'); }
     })
     .catch(() => showToast('📴 ไม่สามารถเชื่อมต่อได้', 'error'));
