@@ -574,7 +574,7 @@
 <!-- ===== PAGE: ADMIN ===== -->
 <div id="page-admin" class="page">
   <nav class="nav">
-    <div class="nav-brand">🥐 Backoffice</div>
+    <div class="nav-brand">🥐 Back office</div>
     <div style="display:flex;align-items:center;gap:8px;">
       <span style="font-size:0.85rem;color:var(--text-muted);" id="adminUserLabel"></span>
       <button class="btn btn-secondary btn-sm" onclick="refreshAdmin()" title="โหลดข้อมูลใหม่">🔄 Refresh</button>
@@ -584,7 +584,7 @@
   <div class="admin-layout">
     <!-- Sidebar -->
     <div class="sidebar">
-      <div class="sidebar-logo">🥐 Backoffice</div>
+      <div class="sidebar-logo">🥐 Back office</div>
       <ul class="sidebar-nav">
         <li><a href="#" class="active" onclick="adminTab('dashboard', this)">📊 Dashboard</a></li>
         <li><a href="#" onclick="adminTab('orders', this)">📋 จัดการออเดอร์</a></li>
@@ -593,6 +593,7 @@
         <li><a href="#" onclick="adminTab('delivery-assign', this)">🚚 มอบหมายงานส่ง</a></li>
         <li><a href="#" onclick="adminTab('payments', this)">💳 ตรวจสอบชำระ</a></li>
         <li><a href="#" onclick="adminTab('reports', this)">📈 รายงาน</a></li>
+        <li><a href="#" onclick="adminTab('order-summary', this)">📑 สรุปออเดอร์</a></li>
       </ul>
     </div>
 
@@ -744,6 +745,23 @@
       </div>
 
       <!-- REPORTS -->
+      <!-- ORDER SUMMARY TAB -->
+      <div id="admin-order-summary" class="admin-tab hidden">
+        <div class="section-header" style="flex-wrap:wrap;gap:10px;">
+          <h2 class="section-title">📑 สรุปออเดอร์</h2>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <select class="form-control" id="summaryStatusFilter" style="width:auto;" onchange="renderOrderSummary()">
+              <option value="">ทุกสถานะ</option>
+              <option value="delivered" selected>ส่งแล้ว</option>
+              <option value="paid">ชำระแล้ว</option>
+            </select>
+            <input type="date" class="form-control" id="summaryDateFilter" style="width:auto;" onchange="renderOrderSummary()">
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('summaryDateFilter').value='';renderOrderSummary()">ล้าง</button>
+          </div>
+        </div>
+        <div id="orderSummaryList"></div>
+      </div>
+
       <div id="admin-reports" class="admin-tab hidden">
         <div class="section-header">
           <h2 class="section-title">📈 รายงานยอดขาย</h2>
@@ -947,7 +965,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 // GAS API URL
-const GAS_URL = 'https://script.google.com/macros/s/AKfycby0eWur40EaLE5kZOumvENyEq3Cgc74oDYBj0lAkn2v7ApC_548htGrGq53rlnh62dB/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyopxcXWQvyWDq2GQvWXra67KUdJZ7T3sl6ILRTYTZVwAZtqrzenCuLWY1KBHzr8hZd/exec';
 
 // =========================================
 // HELPER: แปลง Date object/string เป็น YYYY-MM-DD โดยใช้ local timezone (ไม่ใช่ UTC)
@@ -1395,6 +1413,7 @@ function adminTab(tab, el) {
   if (tab === 'delivery-assign') { renderAssign(); renderAssignHistory(); }
   if (tab === 'payments') loadOrdersForPayments();
   if (tab === 'reports') renderReport();
+  if (tab === 'order-summary') renderOrderSummary();
   return false;
 }
 
@@ -2658,6 +2677,186 @@ function removeReturnItem(idx, orderId) {
   order.returnItems.splice(idx, 1);
   recalcRiderTotal(orderId);
   openDeliveryModal(orderId);
+}
+
+
+// =========================================
+// สรุปออเดอร์ — เปรียบเทียบ original vs final
+// =========================================
+function renderOrderSummary() {
+  const statusFilter = document.getElementById('summaryStatusFilter')?.value || '';
+  const dateFilter   = document.getElementById('summaryDateFilter')?.value || '';
+  const el = document.getElementById('orderSummaryList');
+  if (!el) return;
+
+  let orders = DB.orders.filter(o => {
+    if (statusFilter && o.status !== statusFilter) return false;
+    if (dateFilter && (o.deliveryDate || '').slice(0,10) !== dateFilter) return false;
+    return true;
+  });
+
+  if (!orders.length) {
+    el.innerHTML = '<div class="text-center text-muted" style="padding:3rem;">ไม่มีรายการ</div>';
+    return;
+  }
+
+  el.innerHTML = orders.map(order => {
+    // --- Original items (from order.items as placed by customer) ---
+    const origItems = order.items.filter(i => !i.isExtra && (i.originalQty || i.qty) > 0);
+    const origSum   = origItems.reduce((s, i) => s + i.price * ((i.originalQty || i.qty)), 0);
+    // Admin discount derived from _originalTotal or fall back to implied
+    const origTotal = order._originalTotal !== undefined ? order._originalTotal : order.total;
+    const adminDisc = Math.max(0, origSum - origTotal);
+
+    // --- Final delivery items (current qty after rider edit) ---
+    const finalItems = order.items.filter(i => i.qty > 0);
+    const finalSum   = finalItems.reduce((s, i) => s + i.price * i.qty, 0);
+    const returnItems= order.returnItems || [];
+    const returnSum  = returnItems.reduce((s, i) => s + i.price * i.qty, 0);
+    const finalNet   = order.total;  // as stored/calculated
+
+    const hasChange  = Math.abs(origSum - finalSum) > 0.5 || returnSum > 0 || adminDisc !== (origSum - order.total);
+    const diffBadge  = hasChange
+      ? `<span style="background:#fff3cd;color:#856404;font-size:11px;padding:2px 8px;border-radius:999px;margin-left:6px;">มีการแก้ไข</span>`
+      : `<span style="background:#d1fae5;color:#065f46;font-size:11px;padding:2px 8px;border-radius:999px;margin-left:6px;">ตรงกัน</span>`;
+
+    return `
+    <div class="card" style="margin-bottom:1rem;">
+      <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div>
+          <strong style="color:var(--primary);">${order.id}</strong>${diffBadge}
+          <span class="badge badge-${order.status}" style="margin-left:6px;">${statusLabel(order.status)}</span>
+        </div>
+        <div style="font-size:0.85rem;color:var(--text-muted);">
+          ${order.customer} | ${order.deliveryDate || ''} | ${order.deliveredAt ? 'ส่งแล้ว ' + order.deliveredAt : ''}
+        </div>
+      </div>
+      <div class="card-body" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+
+        <!-- ===== บิล ORIGINAL ===== -->
+        <div style="border:1px solid var(--border);border-radius:var(--radius);padding:12px;background:var(--bg);">
+          <div style="font-weight:600;font-size:0.85rem;color:var(--primary);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+            <span>📋 บิลลูกค้าสั่ง + ส่วนลด admin</span>
+            <button class="btn btn-secondary btn-sm" style="font-size:0.78rem;padding:3px 10px;" onclick="printOriginalBill('${order.id}')">🖨️ พิมพ์</button>
+          </div>
+          <table style="width:100%;font-size:12px;border-collapse:collapse;">
+            <tr style="color:var(--text-muted);border-bottom:1px solid var(--border);">
+              <th style="text-align:left;padding:3px 0;">รายการ</th><th style="text-align:center;">จำนวน</th><th style="text-align:right;">ยอด</th>
+            </tr>
+            ${origItems.map(i => `
+              <tr style="border-bottom:0.5px solid var(--border);">
+                <td style="padding:3px 0;font-size:11.5px;">${i.name}</td>
+                <td style="text-align:center;">${i.originalQty || i.qty}</td>
+                <td style="text-align:right;font-weight:600;">฿${(i.price*(i.originalQty||i.qty)).toLocaleString()}</td>
+              </tr>`).join('')}
+            <tr style="border-top:1px solid var(--border);"><td colspan="2" style="padding-top:4px;font-size:11.5px;">รวม</td><td style="text-align:right;padding-top:4px;">฿${origSum.toLocaleString()}</td></tr>
+            ${adminDisc > 0 ? `<tr><td colspan="2" style="color:var(--danger);font-size:11.5px;">ส่วนลด admin</td><td style="text-align:right;color:var(--danger);">-฿${adminDisc.toLocaleString()}</td></tr>` : ''}
+            <tr><td colspan="2" style="font-weight:700;">ยอดสุทธิ</td><td style="text-align:right;font-weight:700;color:var(--primary);">฿${origTotal.toLocaleString()}</td></tr>
+          </table>
+        </div>
+
+        <!-- ===== บิล FINAL ===== -->
+        <div style="border:1px solid ${hasChange ? '#fbbf24' : 'var(--border)'};border-radius:var(--radius);padding:12px;background:${hasChange ? '#fffbeb' : 'var(--bg)'};">
+          <div style="font-weight:600;font-size:0.85rem;color:var(--success);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
+            <span>✅ บิลสุดท้าย (หลังส่งจริง)</span>
+            <button class="btn btn-secondary btn-sm" style="font-size:0.78rem;padding:3px 10px;" onclick="printBill('${order.id}')">🖨️ พิมพ์</button>
+          </div>
+          <table style="width:100%;font-size:12px;border-collapse:collapse;">
+            <tr style="color:var(--text-muted);border-bottom:1px solid var(--border);">
+              <th style="text-align:left;padding:3px 0;">รายการ</th><th style="text-align:center;">จำนวน</th><th style="text-align:right;">ยอด</th>
+            </tr>
+            ${finalItems.map(i => `
+              <tr style="border-bottom:0.5px solid var(--border);">
+                <td style="padding:3px 0;font-size:11.5px;">${i.name}</td>
+                <td style="text-align:center;">${i.qty}</td>
+                <td style="text-align:right;font-weight:600;">฿${(i.price*i.qty).toLocaleString()}</td>
+              </tr>`).join('')}
+            ${returnItems.map(i => `
+              <tr style="color:var(--danger);border-bottom:0.5px solid var(--border);">
+                <td style="padding:3px 0;font-size:11px;">↩ คืน: ${i.name}</td>
+                <td style="text-align:center;">${i.qty}</td>
+                <td style="text-align:right;">-฿${(i.price*i.qty).toLocaleString()}</td>
+              </tr>`).join('')}
+            <tr style="border-top:1px solid var(--border);"><td colspan="2" style="padding-top:4px;font-size:11.5px;">รวม</td><td style="text-align:right;padding-top:4px;">฿${finalSum.toLocaleString()}</td></tr>
+            ${returnSum > 0 ? `<tr><td colspan="2" style="color:var(--danger);font-size:11.5px;">หักขนมคืน</td><td style="text-align:right;color:var(--danger);">-฿${returnSum.toLocaleString()}</td></tr>` : ''}
+            ${adminDisc > 0 ? `<tr><td colspan="2" style="color:var(--danger);font-size:11.5px;">ส่วนลด admin</td><td style="text-align:right;color:var(--danger);">-฿${adminDisc.toLocaleString()}</td></tr>` : ''}
+            <tr><td colspan="2" style="font-weight:700;">ยอดสุทธิ</td><td style="text-align:right;font-weight:700;color:var(--success);">฿${finalNet.toLocaleString()}</td></tr>
+          </table>
+        </div>
+
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// พิมพ์บิล ORIGINAL (ที่ลูกค้าสั่ง + ส่วนลด admin)
+function printOriginalBill(orderId) {
+  const order = DB.orders.find(o => o.id === orderId);
+  if (!order) return;
+
+  const payLabel = (order.payMethod === 'cash' || order.payMethod === 'เงินสด') ? '💵 เงินสด' : '🏦 โอนเงิน';
+  const now = new Date().toLocaleString('th-TH');
+  const logoSrc = document.getElementById('shopLogo')?.src || '';
+  const logoHtml = (logoSrc && !logoSrc.endsWith('undefined') && !logoSrc.endsWith('/'))
+    ? `<img src="${logoSrc}" class="bill-logo" alt="logo">`
+    : `<div class="bill-logo-emoji">🥐</div>`;
+
+  // ใช้ originalQty เสมอ (รายการที่ลูกค้าสั่ง)
+  const origItems = order.items.filter(i => !i.isExtra && (i.originalQty || i.qty) > 0);
+  const origSum   = origItems.reduce((s, i) => s + i.price * (i.originalQty || i.qty), 0);
+  const origTotal = order._originalTotal !== undefined ? order._originalTotal : order.total;
+  const adminDisc = Math.max(0, Math.round(origSum - origTotal));
+
+  const deliveryLabel = order.deliveryMethod === 'delivery' ? '🚚 ส่งบ้าน' : '🏪 รับเอง';
+  const itemRowsHtml = origItems.map(i => `
+    <tr>
+      <td>${i.name}</td>
+      <td>${i.originalQty || i.qty}</td>
+      <td>฿${i.price.toLocaleString()}</td>
+      <td>฿${(i.price * (i.originalQty || i.qty)).toLocaleString()}</td>
+    </tr>`).join('');
+
+  document.getElementById('printBillArea').innerHTML = `
+  <div class="bill-wrap">
+    <div class="bill-header">
+      ${logoHtml}
+      <div class="bill-header-text">
+        <div class="bill-title">ร้านแหม่มเบเกอรี่</div>
+        <div class="bill-sub">จำหน่ายปลีก-ส่ง คู่ชาวทุ่งสง</div>
+        <div class="bill-sub">วันที่: ${now}</div>
+      </div>
+    </div>
+    <table class="bill-info">
+      <tr><td>เลขที่บิล</td><td>:</td><td><span class="bill-id-val">${order.id}</span></td></tr>
+      <tr><td>ลูกค้า</td><td>:</td><td>${order.customer || '-'}</td></tr>
+      <tr><td>โทร</td><td>:</td><td>${order.phone || '-'}</td></tr>
+      <tr><td>วิธีรับ</td><td>:</td><td>${deliveryLabel}</td></tr>
+      ${order.address ? `<tr><td>ที่อยู่</td><td>:</td><td>${order.address}</td></tr>` : ''}
+      ${order.deliveryDate ? `<tr><td>วันนัดส่ง</td><td>:</td><td>${(order.deliveryDate||'').slice(0,10)}</td></tr>` : ''}
+    </table>
+    <table class="bill-items">
+      <thead><tr><th>รายการ</th><th style="text-align:center;">จำนวน</th><th style="text-align:center;">หน่วยละ</th><th style="text-align:right;">จำนวนเงิน</th></tr></thead>
+      <tbody>
+        ${itemRowsHtml}
+        ${order.deliveryMethod === 'delivery' ? '<tr><td>จัดส่งฟรี</td><td>-</td><td>-</td><td style="color:#27ae60;">ฟรี</td></tr>' : ''}
+      </tbody>
+    </table>
+    <table class="bill-summary">
+      <tr><td>รวม</td><td>฿${origSum.toLocaleString()}</td></tr>
+      ${adminDisc > 0 ? `<tr class="bill-discount"><td>ส่วนลด</td><td>- ฿${adminDisc.toLocaleString()}</td></tr>` : ''}
+      <tr class="bill-net"><td>ยอดสุทธิ</td><td>฿${origTotal.toLocaleString()}</td></tr>
+    </table>
+    <div class="bill-pay-row"><span>ชำระโดย</span><span>${payLabel}</span></div>
+    <div class="bill-footer">ขอบคุณที่ใช้บริการ 🙏<br>แหม่มเบเกอรี่</div>
+  </div>`;
+
+  document.getElementById('printBillArea').style.display = 'block';
+  setTimeout(() => {
+    window.print();
+    const hide = () => { document.getElementById('printBillArea').style.display = 'none'; };
+    window.addEventListener('afterprint', hide, { once: true });
+    setTimeout(hide, 3000);
+  }, 200);
 }
 
 function confirmDelivery(id) {
