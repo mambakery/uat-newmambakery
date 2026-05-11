@@ -301,6 +301,17 @@
 
   .bill-row { display:flex; justify-content:space-between; padding:3px 0; font-size:13px; }
 
+  /* Reorder cards */
+  .reorder-card {
+    padding:10px 12px;border-radius:var(--radius-sm);border:1.5px solid var(--border);
+    cursor:pointer;transition:all .15s;background:var(--bg);margin-bottom:6px;
+  }
+  .reorder-card:hover { border-color:var(--primary);background:var(--primary-light); }
+  .reorder-card.selected { border-color:var(--primary);background:var(--primary-light); box-shadow:0 0 0 2px rgba(212,97,23,.15); }
+  .reorder-date { font-size:0.78rem;color:var(--text-muted);margin-bottom:3px; }
+  .reorder-items { font-size:0.88rem;color:var(--text-primary);line-height:1.4; }
+  .reorder-total { font-size:0.95rem;font-weight:700;color:var(--primary);margin-top:4px; }
+
   /* OWNER CHART COLORS */
   .chart-bar { transition: opacity 0.2s; }
   .chart-bar:hover { opacity: 0.8; }
@@ -3385,9 +3396,21 @@ async function searchReorderHistory() {
     }
 
     // เรียงล่าสุดก่อน เอาแค่ 5 รายการ
+    // normalize items ทุก order ให้มี qty, id ที่ถูกต้อง
     reorderOrders = data
-      .filter(o => o.items && o.items.length > 0)
-      .slice(0, 5);
+      .filter(o => Array.isArray(o.items) && o.items.length > 0)
+      .slice(0, 5)
+      .map(o => ({
+        ...o,
+        items: o.items.map(i => ({
+          id:    i.id || i.productId || '',
+          name:  i.name || i.productName || '',
+          qty:   parseInt(i.qty || i.quantity || i.deliveredQty) || 0,
+          price: parseFloat(i.price || i.unitPrice) || 0,
+          emoji: i.emoji || '🍰',
+        })).filter(i => i.id && i.qty > 0),
+      }))
+      .filter(o => o.items.length > 0);
 
     document.getElementById('reorderPhoneDisplay').textContent = phone;
     renderReorderList();
@@ -3431,15 +3454,23 @@ function selectReorder(idx) {
   // ไปที่ Step 3: แสดง items พร้อมแก้ไขได้
   // สร้าง working copy พร้อม resolve ราคาล่าสุด + กรองเฉพาะสินค้าที่ active
   reorderEditItems = (order.items || [])
+    .map(item => ({
+      // normalize field names — GAS อาจส่งมาต่างกัน
+      id:    item.id       || item.productId || '',
+      name:  item.name     || item.productName || '',
+      qty:   parseInt(item.qty || item.quantity || item.deliveredQty) || 0,
+      price: parseFloat(item.price || item.unitPrice) || 0,
+      emoji: item.emoji || '🍰',
+    }))
     .filter(item => item.id && item.qty > 0)
     .map(item => {
       const prod = DB.products.find(p => p.id === item.id);
       return {
-        id: item.id,
-        name: prod ? prod.name : item.name,
-        price: prod ? prod.price : (item.price || 0),
-        emoji: prod ? (prod.emoji || '🍰') : (item.emoji || '🍰'),
-        qty: item.qty,
+        id:     item.id,
+        name:   prod ? prod.name  : item.name,
+        price:  prod ? prod.price : item.price,
+        emoji:  prod ? (prod.emoji || '🍰') : item.emoji,
+        qty:    item.qty,
         active: prod ? prod.status === 'active' : true,
       };
     });
