@@ -968,7 +968,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 // GAS API URL
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbxl0sIfIN-fgYto_DB5FWB1dBZunNr1rr60SUQoIGoLUwTI7t1cCHxzmHj9bxr5Fq_4/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyopxcXWQvyWDq2GQvWXra67KUdJZ7T3sl6ILRTYTZVwAZtqrzenCuLWY1KBHzr8hZd/exec';
 
 // =========================================
 // HELPER: แปลง Date object/string เป็น YYYY-MM-DD โดยใช้ local timezone (ไม่ใช่ UTC)
@@ -2759,21 +2759,24 @@ function renderOrderSummary() {
     const finalNet   = order.total;
 
     // Badge: เปรียบเทียบรายการจริงที่ส่ง vs รายการที่ลูกค้าสั่ง
+    // คำนวณ realChange ก่อน (ต้องอยู่นอก if-else เพื่อให้ใช้ใน template ได้)
+    let realChange = false;
+    if (hasFinalItems) {
+      const deliveredQtyMap = {};
+      finalItems.forEach(i => { if (!i.isExtra) deliveredQtyMap[i.id] = (deliveredQtyMap[i.id]||0) + i.qty; });
+      const origQtyMap = {};
+      origItems.forEach(i => { origQtyMap[i.id] = (i.originalQty || i.qty); });
+      realChange = finalItems.some(i => i.isExtra)
+        || Object.keys(origQtyMap).some(id => origQtyMap[id] !== (deliveredQtyMap[id]||0))
+        || returnSum > 0;
+    }
+
     let diffBadge;
     if (!hasFinalItems && !isDelivered) {
       diffBadge = `<span style="background:#f3f4f6;color:#6b7280;font-size:11px;padding:2px 8px;border-radius:999px;margin-left:6px;">⏳ รอข้อมูลการส่ง</span>`;
     } else if (usingFallback) {
       diffBadge = `<span style="background:#fff3cd;color:#856404;font-size:11px;padding:2px 8px;border-radius:999px;margin-left:6px;">📋 ข้อมูลจากใบสั่งเดิม</span>`;
     } else {
-      // ตรวจสอบว่ามีการเปลี่ยนแปลงจริงหรือไม่
-      const deliveredQtyMap = {};
-      finalItems.forEach(i => { if (!i.isExtra) deliveredQtyMap[i.id] = (deliveredQtyMap[i.id]||0) + i.qty; });
-      const origQtyMap = {};
-      origItems.forEach(i => { origQtyMap[i.id] = (i.originalQty || i.qty); });
-      const hasExtraItems = finalItems.some(i => i.isExtra);
-      const hasQtyChange  = Object.keys(origQtyMap).some(id => origQtyMap[id] !== (deliveredQtyMap[id]||0));
-      const hasReturns    = returnSum > 0;
-      const realChange    = hasExtraItems || hasQtyChange || hasReturns;
       diffBadge = realChange
         ? `<span style="background:#fff3cd;color:#856404;font-size:11px;padding:2px 8px;border-radius:999px;margin-left:6px;">🔄 มีการแก้ไข</span>`
         : `<span style="background:#d1fae5;color:#065f46;font-size:11px;padding:2px 8px;border-radius:999px;margin-left:6px;">✅ ตรงกัน</span>`;
