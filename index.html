@@ -968,7 +968,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 // GAS API URL
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyh4Ft8qmfU1-8c8RlAHPDf8mmFYElNRl2v3Gm_ekA-PD9pcFt3WiXLRgdVkWl_BzaU/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbyopxcXWQvyWDq2GQvWXra67KUdJZ7T3sl6ILRTYTZVwAZtqrzenCuLWY1KBHzr8hZd/exec';
 
 // =========================================
 // HELPER: แปลง Date object/string เป็น YYYY-MM-DD โดยใช้ local timezone (ไม่ใช่ UTC)
@@ -1636,7 +1636,11 @@ function loadOrders() {
       // ถ้า summary tab กำลังแสดงอยู่ ให้ render ด้วย
       const summaryTab = document.getElementById('admin-order-summary');
       if (summaryTab && !summaryTab.classList.contains('hidden')) {
-        renderOrderSummary();
+        try { renderOrderSummary(); } catch(e) {
+          console.error('renderOrderSummary error:', e);
+          document.getElementById('orderSummaryList').innerHTML =
+            '<div class="text-center text-muted" style="padding:2rem;">เกิดข้อผิดพลาด: ' + e.message + '</div>';
+        }
       }
     })
     .catch(err => showToast('โหลดออเดอร์ล้มเหลว', 'error'));
@@ -2811,7 +2815,7 @@ function renderOrderSummary() {
         </div>
 
         <!-- ===== บิล FINAL ===== -->
-        <div style="border:1px solid ${hasChange ? '#fbbf24' : 'var(--border)'};border-radius:var(--radius);padding:12px;background:${hasChange ? '#fffbeb' : 'var(--bg)'};">
+        <div style="border:1px solid ${(hasFinalItems && realChange) ? '#fbbf24' : 'var(--border)'};border-radius:var(--radius);padding:12px;background:${(hasFinalItems && realChange) ? '#fffbeb' : 'var(--bg)'};">
           <div style="font-weight:600;font-size:0.85rem;color:var(--success);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;">
             <span>✅ บิลสุดท้าย (หลังส่งจริง)</span>
             <button class="btn btn-secondary btn-sm" style="font-size:0.78rem;padding:3px 10px;" onclick="printFinalBill('${order.id}')">🖨️ พิมพ์</button>
