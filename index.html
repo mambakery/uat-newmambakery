@@ -382,10 +382,24 @@
         </div>
         <div id="reorderList"></div>
       </div>
+
+      <!-- Step 3: แก้ไขรายการก่อนยืนยัน -->
+      <div id="reorderStep3" style="display:none;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+          <button onclick="backToReorderList()"
+            style="background:none;border:none;color:var(--primary);cursor:pointer;font-size:0.9rem;">← เลือกออเดอร์อื่น</button>
+          <span style="font-size:0.85rem;color:var(--text-muted);">แก้ไขรายการก่อนสั่ง</span>
+        </div>
+        <div id="reorderEditList" style="display:flex;flex-direction:column;gap:6px;max-height:52vh;overflow-y:auto;padding:2px;"></div>
+        <div style="background:var(--bg);border-radius:var(--radius-sm);padding:9px 12px;margin-top:8px;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:0.9rem;color:var(--text-muted);">ยอดรวม (ประมาณ)</span>
+          <strong class="text-primary" id="reorderEditTotal" style="font-size:1.05rem;">฿0</strong>
+        </div>
+      </div>
     </div>
     <div class="modal-footer" id="reorderFooter" style="display:none;">
-      <button class="btn btn-secondary" onclick="closeModal('reorderModal')">ยกเลิก</button>
-      <button class="btn btn-primary" onclick="confirmReorder()">✅ โหลดรายการนี้สู่ตะกร้า</button>
+      <button class="btn btn-secondary" onclick="closeModal('reorderModal')">ปิด</button>
+      <button class="btn btn-primary" onclick="confirmReorder()">🛒 ใส่ตะกร้าและสั่ง</button>
     </div>
   </div>
 </div>
@@ -3309,9 +3323,11 @@ let reorderOrders = [];
 function openReorderModal() {
   reorderSelectedId = null;
   reorderOrders = [];
+  reorderEditItems = [];
   document.getElementById('reorderPhone').value = '';
   document.getElementById('reorderStep1').style.display = 'block';
   document.getElementById('reorderStep2').style.display = 'none';
+  document.getElementById('reorderStep3').style.display = 'none';
   document.getElementById('reorderFooter').style.display = 'none';
   openModal('reorderModal');
   setTimeout(() => document.getElementById('reorderPhone').focus(), 300);
@@ -3373,46 +3389,101 @@ function renderReorderList() {
   }).join('');
 }
 
+// reorderEditItems: working copy ที่ลูกค้าแก้ไขได้
+let reorderEditItems = [];
+
 function selectReorder(idx) {
   reorderSelectedId = idx;
-  document.querySelectorAll('.reorder-card').forEach((el, i) => {
-    el.classList.toggle('selected', i === idx);
-  });
+  const order = reorderOrders[idx];
+  if (!order) return;
+
+  // ไปที่ Step 3: แสดง items พร้อมแก้ไขได้
+  // สร้าง working copy พร้อม resolve ราคาล่าสุด + กรองเฉพาะสินค้าที่ active
+  reorderEditItems = (order.items || [])
+    .filter(item => item.id && item.qty > 0)
+    .map(item => {
+      const prod = DB.products.find(p => p.id === item.id);
+      return {
+        id: item.id,
+        name: prod ? prod.name : item.name,
+        price: prod ? prod.price : (item.price || 0),
+        emoji: prod ? (prod.emoji || '🍰') : (item.emoji || '🍰'),
+        qty: item.qty,
+        active: prod ? prod.status === 'active' : true,
+      };
+    });
+
+  renderReorderEditStep();
+  document.getElementById('reorderStep2').style.display = 'none';
+  document.getElementById('reorderStep3').style.display = 'block';
   document.getElementById('reorderFooter').style.display = 'flex';
 }
 
+function backToReorderList() {
+  document.getElementById('reorderStep3').style.display = 'none';
+  document.getElementById('reorderFooter').style.display = 'none';
+  document.getElementById('reorderStep2').style.display = 'block';
+}
+
+function renderReorderEditStep() {
+  const list = document.getElementById('reorderEditList');
+  const totalEl = document.getElementById('reorderEditTotal');
+
+  list.innerHTML = reorderEditItems.map((item, i) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:var(--radius-sm);
+      background:${item.active ? 'var(--bg)' : '#f9f9f9'};
+      border:1px solid ${item.active ? 'var(--border)' : '#e0e0e0'};">
+      <span style="font-size:1.4rem;flex-shrink:0;">${item.emoji}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:0.88rem;font-weight:600;${!item.active ? 'color:var(--text-muted);' : ''}">${item.name}${!item.active ? ' <span style="font-size:10px;color:#999;">(ปิดขาย)</span>' : ''}</div>
+        <div style="font-size:0.78rem;color:var(--text-muted);">฿${item.price}/ชิ้น</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+        <button class="qty-btn" style="width:28px;height:28px;" onclick="adjustReorderQty(${i}, -1)">−</button>
+        <input type="number" min="0" value="${item.qty}"
+          style="width:48px;text-align:center;border:1px solid var(--border);border-radius:6px;padding:3px 4px;font-size:0.88rem;"
+          onchange="setReorderQty(${i}, this.value)">
+        <button class="qty-btn" style="width:28px;height:28px;" onclick="adjustReorderQty(${i}, 1)">+</button>
+        <button onclick="removeReorderItem(${i})"
+          style="background:none;border:none;cursor:pointer;color:var(--danger);font-size:1rem;padding:2px 4px;">✕</button>
+      </div>
+    </div>
+  `).join('') || '<p style="text-align:center;color:var(--text-muted);padding:1rem;">ไม่มีรายการ</p>';
+
+  const total = reorderEditItems.reduce((s, i) => s + i.price * i.qty, 0);
+  if (totalEl) totalEl.textContent = '฿' + total.toLocaleString();
+}
+
+function adjustReorderQty(idx, delta) {
+  reorderEditItems[idx].qty = Math.max(0, (reorderEditItems[idx].qty || 0) + delta);
+  renderReorderEditStep();
+}
+
+function setReorderQty(idx, val) {
+  reorderEditItems[idx].qty = Math.max(0, parseInt(val) || 0);
+  renderReorderEditStep();
+}
+
+function removeReorderItem(idx) {
+  reorderEditItems.splice(idx, 1);
+  renderReorderEditStep();
+}
+
 function confirmReorder() {
-  if (reorderSelectedId === null) return;
-  const order = reorderOrders[reorderSelectedId];
-  if (!order || !order.items) return;
+  const activeItems = reorderEditItems.filter(i => i.qty > 0);
+  if (!activeItems.length) { showToast('กรุณาเลือกอย่างน้อย 1 รายการ', 'error'); return; }
 
-  // โหลด products ปัจจุบันก่อนเพื่อ check ราคาล่าสุด
-  const currentProducts = DB.products || [];
-
-  // clear cart เดิม
   cart = {};
-
-  // โหลด items จาก order เดิม
-  order.items.forEach(item => {
-    if (!item.id || item.qty <= 0) return;
-    // หาราคาล่าสุดจาก products ปัจจุบัน
-    const currentProduct = currentProducts.find(p => p.id === item.id);
-    const price = currentProduct ? currentProduct.price : item.price;
-    const name = currentProduct ? currentProduct.name : item.name;
-    const emoji = currentProduct ? currentProduct.emoji : (item.emoji || '🍰');
-    cart[item.id] = { id: item.id, name, price, emoji, qty: item.qty };
+  activeItems.forEach(item => {
+    cart[item.id] = { id: item.id, name: item.name, price: item.price, emoji: item.emoji, qty: item.qty };
   });
 
   updateCartUI();
   closeModal('reorderModal');
-
-  // ไปหน้าสั่งสินค้า
   goTo('page-customer');
 
-  const count = Object.values(cart).reduce((s,i) => s + i.qty, 0);
-  showToast(`✅ โหลด ${count} รายการจากออเดอร์เดิมแล้ว แก้ไขได้ตามต้องการ`, 'success');
-
-  // เปิด cart ให้ลูกค้าเห็น
+  const count = activeItems.reduce((s, i) => s + i.qty, 0);
+  showToast(`✅ ใส่ตะกร้า ${count} ชิ้น แก้ไขได้ในตะกร้า`, 'success');
   setTimeout(() => openCart(), 500);
 }
 
