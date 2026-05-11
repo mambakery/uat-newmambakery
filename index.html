@@ -982,7 +982,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 // GAS API URL
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbzaEhNPp9zp7-d2RrDlsLA9pjC2j2U1Ea71-zxyb2N6aXRepLC6oyyqPb4J_nQ_i1Fb/exec';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxl0sIfIN-fgYto_DB5FWB1dBZunNr1rr60SUQoIGoLUwTI7t1cCHxzmHj9bxr5Fq_4/exec';
 
 // =========================================
 // HELPER: แปลง Date object/string เป็น YYYY-MM-DD โดยใช้ local timezone (ไม่ใช่ UTC)
@@ -2376,37 +2376,59 @@ function setRiderDate(daysOffset) {
 // โหลดสินค้าจาก GAS (แก้ bug: status ไม่ถูก save)
 // =========================================
 // โหลดสินค้าสำหรับลูกค้า — sync status จาก GAS ก่อน render
+// ไม่ต้องการ token เพราะ getProducts เป็น public endpoint
 function loadProductsForCustomer() {
-  renderProducts(); // render ทันทีจาก DB (เพื่อไม่ให้หน้าว่าง)
-  if (!currentUser?.token) return;
-  fetch(`${GAS_URL}?action=getProducts&token=${encodeURIComponent(currentUser.token)}`)
+  renderProducts(); // render ทันทีจาก hardcoded DB (ไม่ให้หน้าว่าง)
+
+  // ดึงสินค้าจาก GAS เสมอ — ไม่ว่า login หรือไม่ก็ตาม
+  // เพราะต้องได้ status จริง + สินค้าที่เพิ่มใหม่ (เช่น E06)
+  const token = currentUser?.token || '';
+  const url = token
+    ? `${GAS_URL}?action=getProducts&token=${encodeURIComponent(token)}&activeOnly=true`
+    : `${GAS_URL}?action=getProducts&activeOnly=true`;  // public access
+
+  fetch(url)
     .then(r => r.json())
     .then(data => {
       if (!Array.isArray(data) || !data.length) return;
       data.forEach(p => {
-        const idx = DB.products.findIndex(x => x.id === p.id);
+        // กรองเฉพาะ active + ไม่ถูกลบ
         const status = (p.status || 'active').toLowerCase();
+        if (status !== 'active' || p.deleted === true || p.deleted === 'TRUE') return;
+
+        const idx = DB.products.findIndex(x => x.id === p.id);
         if (idx !== -1) {
-          DB.products[idx].status = status;
-          // อัปเดต fields อื่นด้วย (ราคา, emoji อาจเปลี่ยน)
-          DB.products[idx].price  = parseFloat(p.price) || DB.products[idx].price;
-          DB.products[idx].emoji  = p.emoji || DB.products[idx].emoji;
-          DB.products[idx].name   = p.name  || DB.products[idx].name;
-        } else if (status === 'active') {
+          // อัปเดต status, ราคา, emoji จาก GAS
+          DB.products[idx].status = 'active';
+          DB.products[idx].price  = parseFloat(p.price)  || DB.products[idx].price;
+          DB.products[idx].emoji  = p.emoji  || DB.products[idx].emoji;
+          DB.products[idx].name   = p.name   || DB.products[idx].name;
+        } else {
+          // สินค้าใหม่ที่ไม่มีใน hardcoded (เช่น E06 ที่สร้างจาก admin)
           DB.products.push({
-            id: p.id, name: p.name,
-            price: parseFloat(p.price) || 0,
-            stock: parseInt(p.stock) || 0,
-            category: p.category || 'filling',
-            desc: p.description || p.desc || '',
-            emoji: p.emoji || '🍰',
-            status: 'active',
+            id:       p.id,
+            name:     p.name,
+            price:    parseFloat(p.price) || 0,
+            stock:    parseInt(p.stock)   || 0,
+            category: p.category          || 'filling',
+            desc:     p.description || p.desc || '',
+            emoji:    p.emoji             || '🍰',
+            status:   'active',
           });
         }
       });
-      renderProducts(); // re-render ด้วย status จริง
+
+      // ซ่อนสินค้าที่ GAS บอกว่า inactive
+      DB.products.forEach(p => {
+        const gasProduct = data.find(g => g.id === p.id);
+        if (gasProduct && (gasProduct.status || 'active').toLowerCase() !== 'active') {
+          p.status = 'inactive';
+        }
+      });
+
+      renderProducts(); // re-render พร้อมข้อมูลจริง
     })
-    .catch(() => {}); // ถ้า offline ใช้ hardcoded ที่ render ไปแล้ว
+    .catch(() => {}); // offline: ใช้ hardcoded เดิม
 }
 
 function loadProducts() {
