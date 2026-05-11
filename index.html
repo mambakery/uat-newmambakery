@@ -2746,11 +2746,13 @@ function renderOrderSummary() {
     const origTotal = origSum - adminDisc;  // ยอดที่ admin ตั้งไว้
 
     // --- Final delivery items (DELIVERY_ITEMS sheet — ที่ rider ส่งจริง) ---
-    // ใช้ deliveryItems เสมอเมื่อมีข้อมูล (ไม่ fallback ไป original items)
     const hasFinalItems = order.deliveryItems && order.deliveryItems.length > 0;
+    // fallback: ออเดอร์ที่ส่งแล้วแต่ไม่มี DELIVERY_ITEMS → ใช้ order.items เดิม
+    const isDelivered = ['delivered', 'paid'].includes(order.status);
+    const usingFallback = !hasFinalItems && isDelivered;
     const finalItems = hasFinalItems
       ? order.deliveryItems.filter(i => i.qty > 0)
-      : [];  // ถ้ายังไม่มี deliveryItems แสดง "รอข้อมูล"
+      : (isDelivered ? order.items.filter(i => i.qty > 0) : []);
     const finalSum   = finalItems.reduce((s, i) => s + i.price * i.qty, 0);
     const returnItems= order.returnItems || [];
     const returnSum  = returnItems.reduce((s, i) => s + i.price * i.qty, 0);
@@ -2758,8 +2760,10 @@ function renderOrderSummary() {
 
     // Badge: เปรียบเทียบรายการจริงที่ส่ง vs รายการที่ลูกค้าสั่ง
     let diffBadge;
-    if (!hasFinalItems) {
+    if (!hasFinalItems && !isDelivered) {
       diffBadge = `<span style="background:#f3f4f6;color:#6b7280;font-size:11px;padding:2px 8px;border-radius:999px;margin-left:6px;">⏳ รอข้อมูลการส่ง</span>`;
+    } else if (usingFallback) {
+      diffBadge = `<span style="background:#fff3cd;color:#856404;font-size:11px;padding:2px 8px;border-radius:999px;margin-left:6px;">📋 ข้อมูลจากใบสั่งเดิม</span>`;
     } else {
       // ตรวจสอบว่ามีการเปลี่ยนแปลงจริงหรือไม่
       const deliveredQtyMap = {};
@@ -2820,13 +2824,13 @@ function renderOrderSummary() {
             <span>✅ บิลสุดท้าย (หลังส่งจริง)</span>
             <button class="btn btn-secondary btn-sm" style="font-size:0.78rem;padding:3px 10px;" onclick="printFinalBill('${order.id}')">🖨️ พิมพ์</button>
           </div>
-          ${!hasFinalItems ? `
+          ${(!hasFinalItems && !isDelivered) ? `
             <div style="text-align:center;padding:2rem 1rem;color:var(--text-muted);font-size:12px;">
               <div style="font-size:1.5rem;margin-bottom:6px;">⏳</div>
-              <div>ยังไม่มีข้อมูลการส่งของ</div>
-              <div style="font-size:11px;margin-top:4px;">ออเดอร์นี้ยังไม่ได้ส่ง หรือต้อง Deploy GAS ใหม่</div>
+              <div>ยังไม่ได้ส่งของ</div>
             </div>
           ` : `
+          ${usingFallback ? `<div style="font-size:10.5px;background:#fff3cd;color:#856404;padding:4px 8px;border-radius:4px;margin-bottom:6px;">⚠️ แสดงจากใบสั่งเดิม — บิลสุดท้ายอาจต่างกัน (Deploy GAS ใหม่เพื่อดูข้อมูลจริง)</div>` : ''}
           <table style="width:100%;font-size:12px;border-collapse:collapse;">
             <tr style="color:var(--text-muted);border-bottom:1px solid var(--border);">
               <th style="text-align:left;padding:3px 0;">รายการ</th>
