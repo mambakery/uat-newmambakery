@@ -2375,36 +2375,49 @@ function setRiderDate(daysOffset) {
 // =========================================
 // โหลดสินค้าจาก GAS (แก้ bug: status ไม่ถูก save)
 // =========================================
-// โหลดสินค้าสำหรับลูกค้า — sync status จาก GAS ก่อน render
-// ไม่ต้องการ token เพราะ getProducts เป็น public endpoint
+// โหลดสินค้าสำหรับลูกค้า — รอ GAS ก่อนแสดงเสมอ (ป้องกัน inactive แสดงก่อน)
 function loadProductsForCustomer() {
-  renderProducts(); // render ทันทีจาก hardcoded DB (ไม่ให้หน้าว่าง)
+  // แสดง loading skeleton ก่อน ไม่ render hardcoded (ซึ่งทุกตัว active)
+  const grid = document.getElementById('productGrid');
+  if (grid) grid.innerHTML = `
+    <div style="grid-column:1/-1;text-align:center;padding:3rem 0;color:var(--text-muted);">
+      <div style="font-size:2rem;margin-bottom:8px;">⏳</div>
+      <div>กำลังโหลดรายการสินค้า...</div>
+    </div>`;
 
-  // ดึงสินค้าจาก GAS เสมอ — ไม่ว่า login หรือไม่ก็ตาม
-  // เพราะต้องได้ status จริง + สินค้าที่เพิ่มใหม่ (เช่น E06)
   const token = currentUser?.token || '';
   const url = token
-    ? `${GAS_URL}?action=getProducts&token=${encodeURIComponent(token)}&activeOnly=true`
-    : `${GAS_URL}?action=getProducts&activeOnly=true`;  // public access
+    ? `${GAS_URL}?action=getProducts&token=${encodeURIComponent(token)}`
+    : `${GAS_URL}?action=getProducts`;
 
   fetch(url)
     .then(r => r.json())
     .then(data => {
-      if (!Array.isArray(data) || !data.length) return;
+      if (!Array.isArray(data) || !data.length) {
+        // GAS ไม่มีข้อมูล → fallback hardcoded แต่แจ้งเตือน
+        renderProducts();
+        return;
+      }
+
+      // *** ขั้นตอนสำคัญ: set ทุก hardcoded product เป็น inactive ก่อน ***
+      // แล้วค่อย set active ตาม GAS จริงๆ
+      DB.products.forEach(p => { p.status = 'inactive'; });
+
+      // อัปเดตจาก GAS
       data.forEach(p => {
-        // กรองเฉพาะ active + ไม่ถูกลบ
-        const status = (p.status || 'active').toLowerCase();
-        if (status !== 'active' || p.deleted === true || p.deleted === 'TRUE') return;
+        const status  = (p.status  || 'active').toLowerCase();
+        const deleted = p.deleted === true || String(p.deleted).toUpperCase() === 'TRUE';
+        if (deleted) return; // ข้ามที่ถูกลบ
 
         const idx = DB.products.findIndex(x => x.id === p.id);
         if (idx !== -1) {
-          // อัปเดต status, ราคา, emoji จาก GAS
-          DB.products[idx].status = 'active';
+          DB.products[idx].status = status;
           DB.products[idx].price  = parseFloat(p.price)  || DB.products[idx].price;
           DB.products[idx].emoji  = p.emoji  || DB.products[idx].emoji;
           DB.products[idx].name   = p.name   || DB.products[idx].name;
-        } else {
-          // สินค้าใหม่ที่ไม่มีใน hardcoded (เช่น E06 ที่สร้างจาก admin)
+          DB.products[idx].desc   = p.description || DB.products[idx].desc || '';
+        } else if (status === 'active') {
+          // สินค้าใหม่จาก admin (เช่น E06, Z01)
           DB.products.push({
             id:       p.id,
             name:     p.name,
@@ -2418,17 +2431,13 @@ function loadProductsForCustomer() {
         }
       });
 
-      // ซ่อนสินค้าที่ GAS บอกว่า inactive
-      DB.products.forEach(p => {
-        const gasProduct = data.find(g => g.id === p.id);
-        if (gasProduct && (gasProduct.status || 'active').toLowerCase() !== 'active') {
-          p.status = 'inactive';
-        }
-      });
-
-      renderProducts(); // re-render พร้อมข้อมูลจริง
+      renderProducts(); // render ด้วย status จริงจาก GAS
     })
-    .catch(() => {}); // offline: ใช้ hardcoded เดิม
+    .catch(() => {
+      // offline fallback: แสดง hardcoded ทั้งหมด
+      DB.products.forEach(p => { p.status = 'active'; });
+      renderProducts();
+    });
 }
 
 function loadProducts() {
