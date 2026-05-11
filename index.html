@@ -574,7 +574,7 @@
 <!-- ===== PAGE: ADMIN ===== -->
 <div id="page-admin" class="page">
   <nav class="nav">
-    <div class="nav-brand">🥐 Backoffice</div>
+    <div class="nav-brand">🥐 Back office</div>
     <div style="display:flex;align-items:center;gap:8px;">
       <span style="font-size:0.85rem;color:var(--text-muted);" id="adminUserLabel"></span>
       <button class="btn btn-secondary btn-sm" onclick="refreshAdmin()" title="โหลดข้อมูลใหม่">🔄 Refresh</button>
@@ -584,7 +584,7 @@
   <div class="admin-layout">
     <!-- Sidebar -->
     <div class="sidebar">
-      <div class="sidebar-logo">🥐 Backoffice</div>
+      <div class="sidebar-logo">🥐 Back office</div>
       <ul class="sidebar-nav">
         <li><a href="#" class="active" onclick="adminTab('dashboard', this)">📊 Dashboard</a></li>
         <li><a href="#" onclick="adminTab('orders', this)">📋 จัดการออเดอร์</a></li>
@@ -1106,7 +1106,7 @@ function goTo(pageId) {
   if (pageId === 'page-admin') { loadOrders(); }
   if (pageId === 'page-rider') loadOrdersForRider();
   if (pageId === 'page-owner') loadOrdersForOwner();
-  if (pageId === 'page-customer') renderProducts();
+  if (pageId === 'page-customer') loadProductsForCustomer();
   if (pageId === 'page-checkout') renderCheckout();
 }
 
@@ -1592,7 +1592,15 @@ function loadOrders() {
         total: parseFloat(o.total) || 0,
         adminDiscount: parseFloat(o.adminDiscount) || 0,
         deliveryItems: Array.isArray(o.deliveryItems) ? o.deliveryItems : null,
-        returnItems: Array.isArray(o.returnItems) ? o.returnItems : [],
+        returnItems: Array.isArray(o.returnItems) ? o.returnItems.map(r => {
+          // ถ้า price = 0 (ข้อมูลเก่าไม่มี unitPrice) ให้หาจาก DB.products
+          let price = parseFloat(r.price || r.unitPrice) || 0;
+          if (!price && r.id) {
+            const prod = DB.products.find(p => p.id === r.id);
+            if (prod) price = prod.price || 0;
+          }
+          return { ...r, price };
+        }) : [],
         status: normalizeStatus(o.status),
         payMethod: normalizePayMethod(o.paymentMethod),
         deliveryDate: (() => {
@@ -1896,11 +1904,13 @@ function updateOrderStatus() {
 function renderProducts_admin() {
   const search = (document.getElementById('productSearch')?.value || '').toLowerCase();
   const catFilter = document.getElementById('productCatFilter')?.value || '';
-  let products = DB.products.filter(p => {
-    const ms = !search || p.name.toLowerCase().includes(search);
-    const mc = !catFilter || p.category === catFilter;
-    return ms && mc;
-  });
+  let products = DB.products
+    .filter(p => {
+      const ms = !search || p.name.toLowerCase().includes(search);
+      const mc = !catFilter || p.category === catFilter;
+      return ms && mc;
+    })
+    .sort((a,b) => (a.id||'').localeCompare(b.id||'', undefined, {numeric:true}));
   const catNames = { filling: '🥐 ขนมปังไส้', cake: '🎂 เค้ก', piah: '🌸 เปี๊ยะ', donut: '🍩 โดนัท', thai: '🍘 ขนมไทย', bread: '🍞 ปังกรอบ', pie: '🥧 พาย' };
   document.getElementById('productTableBody').innerHTML = products.map(p => `
     <tr>
@@ -2198,7 +2208,15 @@ function loadOrdersForPayments() {
         total: parseFloat(o.total) || 0,
         adminDiscount: parseFloat(o.adminDiscount) || 0,
         deliveryItems: Array.isArray(o.deliveryItems) ? o.deliveryItems : null,
-        returnItems: Array.isArray(o.returnItems) ? o.returnItems : [],
+        returnItems: Array.isArray(o.returnItems) ? o.returnItems.map(r => {
+          // ถ้า price = 0 (ข้อมูลเก่าไม่มี unitPrice) ให้หาจาก DB.products
+          let price = parseFloat(r.price || r.unitPrice) || 0;
+          if (!price && r.id) {
+            const prod = DB.products.find(p => p.id === r.id);
+            if (prod) price = prod.price || 0;
+          }
+          return { ...r, price };
+        }) : [],
         status: normalizeStatus(o.status),
         payMethod: normalizePayMethod(o.paymentMethod),
         deliveryDate: o.deliveryDate ? o.deliveryDate.split('T')[0] : '',
@@ -2343,6 +2361,40 @@ function setRiderDate(daysOffset) {
 // =========================================
 // โหลดสินค้าจาก GAS (แก้ bug: status ไม่ถูก save)
 // =========================================
+// โหลดสินค้าสำหรับลูกค้า — sync status จาก GAS ก่อน render
+function loadProductsForCustomer() {
+  renderProducts(); // render ทันทีจาก DB (เพื่อไม่ให้หน้าว่าง)
+  if (!currentUser?.token) return;
+  fetch(`${GAS_URL}?action=getProducts&token=${encodeURIComponent(currentUser.token)}`)
+    .then(r => r.json())
+    .then(data => {
+      if (!Array.isArray(data) || !data.length) return;
+      data.forEach(p => {
+        const idx = DB.products.findIndex(x => x.id === p.id);
+        const status = (p.status || 'active').toLowerCase();
+        if (idx !== -1) {
+          DB.products[idx].status = status;
+          // อัปเดต fields อื่นด้วย (ราคา, emoji อาจเปลี่ยน)
+          DB.products[idx].price  = parseFloat(p.price) || DB.products[idx].price;
+          DB.products[idx].emoji  = p.emoji || DB.products[idx].emoji;
+          DB.products[idx].name   = p.name  || DB.products[idx].name;
+        } else if (status === 'active') {
+          DB.products.push({
+            id: p.id, name: p.name,
+            price: parseFloat(p.price) || 0,
+            stock: parseInt(p.stock) || 0,
+            category: p.category || 'filling',
+            desc: p.description || p.desc || '',
+            emoji: p.emoji || '🍰',
+            status: 'active',
+          });
+        }
+      });
+      renderProducts(); // re-render ด้วย status จริง
+    })
+    .catch(() => {}); // ถ้า offline ใช้ hardcoded ที่ render ไปแล้ว
+}
+
 function loadProducts() {
   if (!currentUser?.token) { renderProducts_admin(); return; }
   fetch(`${GAS_URL}?action=getProducts&token=${encodeURIComponent(currentUser.token)}`)
@@ -2403,7 +2455,15 @@ function loadOrdersForRider() {
         total: parseFloat(o.total) || 0,
         adminDiscount: parseFloat(o.adminDiscount) || 0,
         deliveryItems: Array.isArray(o.deliveryItems) ? o.deliveryItems : null,
-        returnItems: Array.isArray(o.returnItems) ? o.returnItems : [],
+        returnItems: Array.isArray(o.returnItems) ? o.returnItems.map(r => {
+          // ถ้า price = 0 (ข้อมูลเก่าไม่มี unitPrice) ให้หาจาก DB.products
+          let price = parseFloat(r.price || r.unitPrice) || 0;
+          if (!price && r.id) {
+            const prod = DB.products.find(p => p.id === r.id);
+            if (prod) price = prod.price || 0;
+          }
+          return { ...r, price };
+        }) : [],
         status: normalizeStatus(o.status),
         payMethod: normalizePayMethod(o.paymentMethod),
         deliveryDate: (() => {
@@ -2575,9 +2635,11 @@ function openDeliveryModal(id) {
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <select class="form-control" id="extraProductSelect" style="flex:2;min-width:160px;font-size:0.85rem;">
           <option value="">-- เลือกสินค้า --</option>
-          ${DB.products.filter(p => p.status === 'active').map(p =>
-            `<option value="${p.id}" data-price="${p.price}" data-name="${p.name}">${p.name} (฿${p.price})</option>`
-          ).join('')}
+          ${[...DB.products]
+            .filter(p => p.status === 'active')
+            .sort((a,b) => (a.id||'').localeCompare(b.id||'', undefined, {numeric:true}))
+            .map(p => `<option value="${p.id}" data-price="${p.price}" data-name="${p.name}">${p.name} (฿${p.price})</option>`)
+            .join('')}
         </select>
         <input type="number" id="extraQty" class="form-control" value="1" min="1" style="width:64px;flex:none;">
         <button class="btn btn-primary btn-sm" onclick="addExtraItem('${id}')">เพิ่ม</button>
@@ -2604,9 +2666,12 @@ function openDeliveryModal(id) {
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;">
         <select class="form-control" id="returnProductSelect" style="flex:2;min-width:160px;font-size:0.85rem;">
           <option value="">-- เลือกสินค้าที่คืน --</option>
-          ${DB.products.map(p =>
-            `<option value="${p.id}" data-price="${p.price}" data-name="${p.name}">${p.name} (฿${p.price})</option>`
-          ).join('')}
+          ${[...DB.products]
+            .filter(p => p.status === 'active')
+            .sort((a,b) => (a.id||'').localeCompare(b.id||'', undefined, {numeric:true}))
+            .map(p =>
+              `<option value="${p.id}" data-price="${p.price}" data-name="${p.name}">${p.name} (฿${p.price})</option>`
+            ).join('')}
         </select>
         <input type="number" id="returnQtyInput" class="form-control" value="1" min="1" style="width:64px;flex:none;">
         <button class="btn btn-sm" style="background:var(--danger);color:white;" onclick="addReturnItem('${id}')">คืน</button>
@@ -2754,7 +2819,14 @@ function renderOrderSummary() {
       ? order.deliveryItems.filter(i => i.qty > 0)
       : (isDelivered ? order.items.filter(i => i.qty > 0) : []);
     const finalSum   = finalItems.reduce((s, i) => s + i.price * i.qty, 0);
-    const returnItems= order.returnItems || [];
+    // resolve price ที่อาจ = 0 จาก DB.products (ข้อมูลเก่าใน RETURNS sheet)
+    const returnItems = (order.returnItems || []).map(r => {
+      if (!r.price && r.id) {
+        const prod = DB.products.find(p => p.id === r.id);
+        return { ...r, price: prod ? prod.price || 0 : 0 };
+      }
+      return r;
+    });
     const returnSum  = returnItems.reduce((s, i) => s + i.price * i.qty, 0);
     const finalNet   = order.total;
 
@@ -3073,7 +3145,15 @@ function loadOrdersForOwner() {
         total: parseFloat(o.total) || 0,
         adminDiscount: parseFloat(o.adminDiscount) || 0,
         deliveryItems: Array.isArray(o.deliveryItems) ? o.deliveryItems : null,
-        returnItems: Array.isArray(o.returnItems) ? o.returnItems : [],
+        returnItems: Array.isArray(o.returnItems) ? o.returnItems.map(r => {
+          // ถ้า price = 0 (ข้อมูลเก่าไม่มี unitPrice) ให้หาจาก DB.products
+          let price = parseFloat(r.price || r.unitPrice) || 0;
+          if (!price && r.id) {
+            const prod = DB.products.find(p => p.id === r.id);
+            if (prod) price = prod.price || 0;
+          }
+          return { ...r, price };
+        }) : [],
         status: normalizeStatus(o.status),
         payMethod: normalizePayMethod(o.paymentMethod),
         deliveryDate: o.deliveryDate ? o.deliveryDate.split('T')[0] : '',
@@ -3375,7 +3455,13 @@ function printFinalBill(orderId) {
   const deliveryLabel = order.deliveryMethod === 'delivery' ? '🚚 ส่งบ้าน' : '🏪 รับเอง';
 
   const finalItems  = order.deliveryItems.filter(i => i.qty > 0);
-  const returnItems = order.returnItems || [];
+  const returnItems = (order.returnItems || []).map(r => {
+    if (!r.price && r.id) {
+      const prod = DB.products.find(p => p.id === r.id);
+      return { ...r, price: prod ? prod.price || 0 : 0 };
+    }
+    return r;
+  });
   const finalSum    = finalItems.reduce((s, i) => s + i.price * i.qty, 0);
   const returnSum   = returnItems.reduce((s, i) => s + i.price * i.qty, 0);
   const adminDisc   = order.adminDiscount || 0;
